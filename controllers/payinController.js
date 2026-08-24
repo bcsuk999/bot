@@ -23,7 +23,7 @@ const REQUIRED_CONFIRMATIONS = {
 
 async function getNextSequence(name) {
   const counter = await Counter.findOneAndUpdate(
-    { name },
+    { _id: name },
     { $inc: { seq: 1 } },
     { new: true, upsert: true }
   );
@@ -159,6 +159,7 @@ exports.createPayin = async (req, res) => {
       },
     });
   } catch (err) {
+    console.error('createPayin error:', err);
     if (err.code === 11000) {
       return res.status(409).json({ success: 'failed', msg: 'Duplicate payin, please retry' });
     }
