@@ -8,6 +8,7 @@ const {
   updateDepositAddress,
   deleteDepositAddress,
   toggleDepositAddress,
+  seedDefaultAddresses,
 } = require('../controllers/adminDepositController');
 const {
   adminListPayins,
@@ -34,8 +35,9 @@ router.patch('/users/:userid/status', auth, requireAdmin, updateUserStatus);
 router.get('/banks', auth, requireAdmin, listBanks);
 router.patch('/banks/:bankId/status', auth, requireAdmin, updateBankStatus);
 
-// Admin deposit address config (TRC20/BEP20)
+// Admin deposit address config (TRC20/BEP20) - no auto-seed, deleted stays deleted
 router.get('/deposit-addresses', auth, requireAdmin, listDepositAddresses);
+router.post('/deposit-addresses/seed', auth, requireAdmin, seedDefaultAddresses);
 router.post('/deposit-addresses', auth, requireAdmin, createDepositAddress);
 router.patch('/deposit-addresses/:id', auth, requireAdmin, updateDepositAddress);
 router.patch('/deposit-addresses/:id/toggle', auth, requireAdmin, toggleDepositAddress);

@@ -25,9 +25,13 @@ Local: http://localhost:5000
   {
     "success": true,
     "msg": "User registered successfully",
-    "token": "jwt_token_string"
+    "token": "jwt_token_string",
+    "uid": 3056579,
+    "mobile": "9876543210",
+    "balance": 0
   }
   ```
+  `uid` is `User.userid` Number, `balance` is wallet `balanceAfter` of last success transaction else 0.
 - **Status:** 201 Created
 - **Errors:**
   - 400: `{ "success": "failed", "msg": "Mobile and password are required" }`
@@ -51,14 +55,12 @@ Local: http://localhost:5000
     "success": true,
     "msg": "Login successful",
     "token": "jwt_token_string",
-    "user": {
-      "id": "user_id",
-      "mobile": "mobile_number",
-      "role": "user|admin",
-      "status": "active|ban|suspend"
-    }
+    "uid": 3056579,
+    "mobile": "9876543210",
+    "balance": 9000
   }
   ```
+  `uid` is `User.userid` Number, `balance` is current wallet balance (last `success` transaction `balanceAfter` else 0). Removed `user.id` and `role` per requirement; flat fields.
 - **Status:** 200 OK
 - **Errors:**
   - 404: `{ "success": "failed", "msg": "User not found" }`

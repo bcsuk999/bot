@@ -15,7 +15,7 @@ All admin payin endpoints require `Authorization: Bearer <admin_jwt>` + `role: a
 
 ## Deposit Address Config (Admin)
 
-Manage USDT deposit addresses per network. When user calls `POST /api/user/payin` the backend uses the active address for that network (`DepositAddress` collection, fallback to defaults).
+Manage USDT deposit addresses per network. When user calls `POST /api/user/payin` the backend uses the active address for that network (`DepositAddress` collection, **no fallback** — if no active address, payin returns `400 {success:'failed',msg:'Deposit address not configured for BEP20'}`). Deleted addresses stay deleted (bug fixed: previously `GET` auto-seeded 2 defaults when count was 0).
 
 ### List Deposit Addresses
 #### Endpoint: `GET /api/admin/deposit-addresses`
@@ -46,12 +46,12 @@ Manage USDT deposit addresses per network. When user calls `POST /api/user/payin
 - **Headers:** `Authorization: Bearer <admin_token>`, `Content-Type: application/json`
 - **Request Body:**
   ```json
-  { "network": "TRC20", "address": "TXYZ...", "label": "Main TRC20", "isActive": true }
+  { "network": "TRC20", "address": "TXYZ...", "label": "Main TRC20", "isActive": true, "exchangeRate": 90 }
   ```
-  `currency` defaults to `USDT` (only USDT allowed). If `isActive:true`, previous active for same `USDT+network` is auto-deactivated (unique active per network).
+  `currency` defaults to `USDT` (only USDT allowed). If `isActive:true`, previous active for same `USDT+network` is auto-deactivated (unique active per network). **You can change exchange rate along with address** via `exchangeRate` (or `rate`) — it upserts `ExchangeRate` for that `currency+network` and returns `exchangeRate` in response.
 - **Response (201):**
   ```json
-  { "success": true, "msg": "Deposit address created", "address": { "_id":"...", "network":"TRC20", "address":"TXYZ...", "isActive": true } }
+  { "success": true, "msg": "Deposit address created", "address": { "_id":"...", "network":"TRC20", "address":"TXYZ...", "isActive": true }, "exchangeRate": { "currency":"USDT", "network":"TRC20", "rate":90 } }
   ```
 - **Errors:**
   - 400: `{ "success": "failed", "msg": "network and address are required" }`
@@ -60,8 +60,9 @@ Manage USDT deposit addresses per network. When user calls `POST /api/user/payin
 
 ### Update Deposit Address
 #### Endpoint: `PATCH /api/admin/deposit-addresses/:id`
-- **Request Body (all optional):** `{ "network": "BEP20", "address": "0x...", "label": "new", "isActive": false, "currency": "USDT" }`
-- **Response (200):** `{ "success": true, "msg": "Deposit address updated", "address": {...} }`
+- **Request Body (all optional):** `{ "network": "BEP20", "address": "0x...", "label": "new", "isActive": false, "currency": "USDT", "exchangeRate": 95 }`
+- If `exchangeRate` (or `rate`) provided, it also upserts the `ExchangeRate` for that `currency+network`.
+- **Response (200):** `{ "success": true, "msg": "Deposit address updated", "address": {...}, "exchangeRate": {...} }`
 - **Errors:** 404 not found, 400 invalid format, 422 duplicate
 
 ### Toggle Active
@@ -72,8 +73,13 @@ Manage USDT deposit addresses per network. When user calls `POST /api/user/payin
 
 ### Delete Deposit Address
 #### Endpoint: `DELETE /api/admin/deposit-addresses/:id`
-- **Response:** `{ "success": true, "msg": "Deposit address deleted" }`
+- **Response:** `{ "success": true, "msg": "Deposit address deleted" }` — stays deleted (no auto-reseed). If all deleted, `POST /api/user/payin` will fail `400` until admin creates a new one.
 - 404 if not found
+
+### Seed Defaults (Explicit)
+#### Endpoint: `POST /api/admin/deposit-addresses/seed`
+- **Description:** Explicitly seeds the 2 default addresses (`TRC20 TQRc...` / `BEP20 0x4993...`) if they don't already exist. Respects unique active per network (if network already has active, default is created as inactive).
+- **Response:** `{ "success": true, "msg": "Default addresses seeded", "created": [...] }` or `"Defaults already exist"`
 
 ---
 

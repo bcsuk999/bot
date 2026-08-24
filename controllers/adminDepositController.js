@@ -1,10 +1,5 @@
 const DepositAddress = require('../models/DepositAddress');
-
-// Seed defaults if collection empty
-const DEFAULT_ADDRESSES = [
-  { currency: 'USDT', network: 'TRC20', address: 'TQRcQg2naLxZGxuWCv7E53VgEasRAdPL8v', label: 'USDT TRC20 default', isActive: true },
-  { currency: 'USDT', network: 'BEP20', address: '0x4993D6bD7E9b27D5B306F36ec0b4Cea8927BB2fB', label: 'USDT BEP20 default', isActive: true },
-];
+const ExchangeRate = require('../models/ExchangeRate');
 
 function validateAddress(network, address) {
   if (network === 'TRC20') {
@@ -17,18 +12,50 @@ function validateAddress(network, address) {
   return null;
 }
 
-async function ensureSeeded() {
-  const count = await DepositAddress.countDocuments();
-  if (count === 0) {
+// No auto-seed here - admin controls addresses. Deleted addresses stay deleted.
+// Seed is only via explicit POST /api/admin/deposit-addresses/seed if needed.
+const DEFAULT_ADDRESSES = [
+  { currency: 'USDT', network: 'TRC20', address: 'TQRcQg2naLxZGxuWCv7E53VgEasRAdPL8v', label: 'USDT TRC20 default', isActive: true },
+  { currency: 'USDT', network: 'BEP20', address: '0x4993D6bD7E9b27D5B306F36ec0b4Cea8927BB2fB', label: 'USDT BEP20 default', isActive: true },
+];
+
+exports.seedDefaultAddresses = async (req, res) => {
+  try {
+    const created = [];
     for (const a of DEFAULT_ADDRESSES) {
-      await DepositAddress.updateOne({ address: a.address }, { $setOnInsert: a }, { upsert: true });
+      const existsAddr = await DepositAddress.findOne({ address: a.address }).lean();
+      if (existsAddr) continue;
+      // respect unique active per network - if network already has active, create as inactive
+      const hasActive = await DepositAddress.findOne({ currency: a.currency, network: a.network, isActive: true }).lean();
+      const toCreate = { ...a, createdBy: req.user.userId, isActive: hasActive ? false : a.isActive };
+      const doc = await DepositAddress.create(toCreate);
+      created.push(doc);
     }
+    res.json({ success: true, msg: created.length ? 'Default addresses seeded' : 'Defaults already exist', created });
+  } catch (err) {
+    res.status(500).json({ success: 'failed', msg: 'Failed to seed defaults' });
+  }
+};
+
+async function syncExchangeRate(currency, network, rate, updatedBy) {
+  if (rate == null) return;
+  const pr = Number(rate);
+  if (!isFinite(pr) || pr <= 0) return;
+  const netVal = network ? String(network).toUpperCase() : null;
+  await ExchangeRate.updateMany({ currency, network: netVal, isActive: true }, { $set: { isActive: false } });
+  let doc = await ExchangeRate.findOne({ currency, network: netVal });
+  if (doc) {
+    doc.rate = pr;
+    doc.isActive = true;
+    doc.updatedBy = updatedBy;
+    await doc.save();
+  } else {
+    await ExchangeRate.create({ currency, network: netVal, rate: pr, isActive: true, updatedBy });
   }
 }
 
 exports.listDepositAddresses = async (req, res) => {
   try {
-    await ensureSeeded();
     const { network, isActive, page = 1, limit = 20 } = req.query;
     const filter = {};
     if (network && ['TRC20', 'BEP20'].includes(String(network).toUpperCase())) filter.network = String(network).toUpperCase();
@@ -51,7 +78,7 @@ exports.listDepositAddresses = async (req, res) => {
 
 exports.createDepositAddress = async (req, res) => {
   try {
-    let { currency, network, address, label, isActive } = req.body;
+    let { currency, network, address, label, isActive, exchangeRate, rate } = req.body;
     currency = currency ? String(currency).toUpperCase() : 'USDT';
     if (!network || !address) return res.status(400).json({ success: 'failed', msg: 'network and address are required' });
     network = String(network).toUpperCase().trim();
@@ -79,7 +106,18 @@ exports.createDepositAddress = async (req, res) => {
       createdBy: req.user.userId,
     });
 
-    res.status(201).json({ success: true, msg: 'Deposit address created', address: doc });
+    // allow changing exchange rate along with address
+    const rateVal = exchangeRate != null ? exchangeRate : rate;
+    if (rateVal != null) {
+      await syncExchangeRate(currency, network, rateVal, req.user.userId);
+    }
+    let exchangeRateDoc = null;
+    if (rateVal != null) {
+      exchangeRateDoc = await ExchangeRate.findOne({ currency, network, isActive: true }).lean();
+      if (exchangeRateDoc && exchangeRateDoc.rate != null) exchangeRateDoc.rate = parseFloat(exchangeRateDoc.rate.toString());
+    }
+
+    res.status(201).json({ success: true, msg: 'Deposit address created', address: doc, exchangeRate: exchangeRateDoc });
   } catch (err) {
     if (err.code === 11000) {
       const field = Object.keys(err.keyPattern || {})[0] || 'address';
@@ -92,7 +130,7 @@ exports.createDepositAddress = async (req, res) => {
 exports.updateDepositAddress = async (req, res) => {
   try {
     const { id } = req.params;
-    let { network, address, label, isActive, currency } = req.body;
+    let { network, address, label, isActive, currency, exchangeRate, rate } = req.body;
     const doc = await DepositAddress.findById(id);
     if (!doc) return res.status(404).json({ success: 'failed', msg: 'Deposit address not found' });
 
@@ -124,7 +162,18 @@ exports.updateDepositAddress = async (req, res) => {
     }
 
     await doc.save();
-    res.json({ success: true, msg: 'Deposit address updated', address: doc });
+
+    const rateVal = exchangeRate != null ? exchangeRate : rate;
+    let exchangeRateDoc = null;
+    if (rateVal != null) {
+      await syncExchangeRate(doc.currency, doc.network, rateVal, req.user.userId);
+      exchangeRateDoc = await ExchangeRate.findOne({ currency: doc.currency, network: doc.network, isActive: true }).lean();
+      if (exchangeRateDoc && exchangeRateDoc.rate != null) exchangeRateDoc.rate = parseFloat(exchangeRateDoc.rate.toString());
+    }
+
+    const resp = { success: true, msg: 'Deposit address updated', address: doc };
+    if (exchangeRateDoc) resp.exchangeRate = exchangeRateDoc;
+    res.json(resp);
   } catch (err) {
     if (err.code === 11000) return res.status(422).json({ success: 'failed', msg: 'Active address for this network already exists' });
     res.status(500).json({ success: 'failed', msg: 'Failed to update deposit address' });

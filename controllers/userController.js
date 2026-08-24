@@ -1,8 +1,18 @@
 const User = require('../models/User');
 const Counter = require('../models/Counter');
+const Transaction = require('../models/Transaction');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 require('../db/conn');
+
+async function getBalance(userId) {
+  const last = await Transaction.findOne({ user: userId, status: 'success' }).sort({ createdAt: -1 }).lean();
+  if (last && last.balanceAfter != null) {
+    const b = parseFloat(last.balanceAfter.toString());
+    return isNaN(b) ? 0 : b;
+  }
+  return 0;
+}
 
 const BASE_USERID = 3056579;
 const USERID_STEP = 33;
@@ -70,7 +80,7 @@ exports.register = async (req, res) => {
 
     const token = jwt.sign({ userId: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN });
 
-    res.status(201).json({ success: true, msg: 'User registered successfully', token });
+    res.status(201).json({ success: true, msg: 'User registered successfully', token, uid: user.userid, mobile: user.mobile, balance: 0 });
   } catch (err) {
     console.error('Register error:', err);
     res.status(500).json({ success: 'failed', msg: 'Failed to register user' });
@@ -93,7 +103,8 @@ exports.login = async (req, res) => {
 
     const token = jwt.sign({ userId: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN });
 
-    res.json({ success: true, msg: 'Login successful', token, user: { id: user._id, mobile: user.mobile, role: user.role, status: user.status } });
+    const balance = await getBalance(user._id);
+    res.json({ success: true, msg: 'Login successful', token, uid: user.userid, mobile: user.mobile, balance });
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).json({ success: 'failed', msg: 'Failed to login' });
