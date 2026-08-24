@@ -1,11 +1,37 @@
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
+const cors = require('cors');
 const userRouter = require('./routes/user');
 const adminRouter = require('./routes/admin');
 const connectDB = require('./db/conn');
 
 const app = express();
+
+// CORS - allow specific origins + global access
+const allowedOrigins = [
+  'http://localhost:3001',
+  'https://subnpayadminio.vercel.app',
+  'http://localhost:5173',
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // allow requests with no origin (curl, Postman, mobile apps)
+      if (!origin) return callback(null, true);
+      // allow explicitly listed origins
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      // allow any other origin globally (per requirement "allow global url")
+      // To restrict to only allowedOrigins, change next line to: return callback(new Error('Not allowed by CORS'), false);
+      return callback(null, true);
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+    optionsSuccessStatus: 204,
+  })
+);
 app.use(express.json());
 
 connectDB();
