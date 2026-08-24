@@ -42,14 +42,14 @@ app.use('/api/admin', adminRouter);
 app.get('/', (req, res) => {
   res.status(200).json({
     success: true,
-    message: 'Server is running',
+    msg: 'Server is running',
   });
 });
 
 app.use((req, res) => {
   res.status(404).json({
-    success: false,
-    message: 'Route not found',
+    success: 'failed',
+    msg: 'Route not found',
   });
 });
 
