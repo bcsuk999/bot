@@ -167,9 +167,18 @@ exports.createPayin = async (req, res) => {
   }
 };
 
+function toNum(v) {
+  if (v == null) return v;
+  return typeof v === 'object' && v.toString ? parseFloat(v.toString()) : Number(v);
+}
 exports.getPayinList = async (req, res) => {
   try {
-    const payins = await Payin.find({ user: req.user.userId }).sort({ createdAt: -1 }).lean({ getters: true });
+    const payinsRaw = await Payin.find({ user: req.user.userId }).sort({ createdAt: -1 }).lean({ getters: true });
+    const payins = payinsRaw.map((p) => ({
+      ...p,
+      amount: toNum(p.amount),
+      detectedAmount: p.detectedAmount != null ? toNum(p.detectedAmount) : null,
+    }));
     return res.json({ success: true, msg: 'Payins fetched', count: payins.length, payins });
   } catch (err) {
     return res.status(500).json({ success: 'failed', msg: 'Failed to fetch payins' });

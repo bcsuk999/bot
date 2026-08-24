@@ -46,10 +46,15 @@ exports.adminListPayins = async (req, res) => {
     const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
     const skip = (pageNum - 1) * limitNum;
 
-    const [payins, count] = await Promise.all([
+    const [payinsRaw, count] = await Promise.all([
       Payin.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean({ getters: true }),
       Payin.countDocuments(filter),
     ]);
+    const payins = payinsRaw.map((p) => ({
+      ...p,
+      amount: p.amount != null ? parseFloat(p.amount.toString()) : p.amount,
+      detectedAmount: p.detectedAmount != null ? parseFloat(p.detectedAmount.toString()) : null,
+    }));
     res.json({ success: true, msg: 'Payins fetched', count, page: pageNum, limit: limitNum, totalPages: Math.ceil(count / limitNum), payins });
   } catch (err) {
     res.status(500).json({ success: 'failed', msg: 'Failed to fetch payins' });
@@ -107,7 +112,14 @@ exports.adminGetTransactionByTrnId = async (req, res) => {
     const { trnId } = req.params;
     const txn = await Transaction.findOne({ trnId }).lean({ getters: true });
     if (!txn) return res.status(404).json({ success: 'failed', msg: 'Transaction not found' });
-    const payin = txn.referenceId ? await Payin.findOne({ payinId: txn.referenceId }).lean({ getters: true }) : null;
+    let payin = txn.referenceId ? await Payin.findOne({ payinId: txn.referenceId }).lean({ getters: true }) : null;
+    if (payin) {
+      payin = {
+        ...payin,
+        amount: payin.amount != null ? parseFloat(payin.amount.toString()) : payin.amount,
+        detectedAmount: payin.detectedAmount != null ? parseFloat(payin.detectedAmount.toString()) : null,
+      };
+    }
     res.json({
       success: true,
       msg: 'Transaction fetched',
