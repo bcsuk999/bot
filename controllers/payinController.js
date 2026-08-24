@@ -1,11 +1,20 @@
 const Payin = require('../models/Payin');
 const Transaction = require('../models/Transaction');
 const Counter = require('../models/Counter');
+const DepositAddress = require('../models/DepositAddress');
 
-const DEPOSIT_ADDRESSES = {
+const FALLBACK_DEPOSIT_ADDRESSES = {
   TRC20: 'TQRcQg2naLxZGxuWCv7E53VgEasRAdPL8v',
   BEP20: '0x4993D6bD7E9b27D5B306F36ec0b4Cea8927BB2fB',
 };
+
+async function getDepositAddress(network) {
+  try {
+    const doc = await DepositAddress.findOne({ network, isActive: true, currency: 'USDT' }).lean();
+    if (doc && doc.address) return doc.address;
+  } catch (_) {}
+  return FALLBACK_DEPOSIT_ADDRESSES[network] || null;
+}
 
 const REQUIRED_CONFIRMATIONS = {
   TRC20: 20,
@@ -59,7 +68,7 @@ exports.createPayin = async (req, res) => {
       return res.status(400).json({ success: 'failed', msg: 'network must be TRC20 or BEP20' });
     }
 
-    const address = DEPOSIT_ADDRESSES[network];
+    const address = await getDepositAddress(network);
     if (!address) {
       return res.status(400).json({ success: 'failed', msg: `Deposit address not configured for ${network}` });
     }
