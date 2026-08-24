@@ -168,13 +168,25 @@ function toNum(v) {
 }
 exports.getPayinList = async (req, res) => {
   try {
-    const payinsRaw = await Payin.find({ user: req.user.userId }).sort({ createdAt: -1 }).lean({ getters: true });
+    const { page = 1, limit = 20, status, network } = req.query;
+    const filter = { user: req.user.userId };
+    if (status && ['pending', 'success', 'failed', 'reversed'].includes(status)) filter.status = status;
+    if (network && ['TRC20', 'BEP20'].includes(String(network).toUpperCase())) filter.network = String(network).toUpperCase();
+
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+    const skip = (pageNum - 1) * limitNum;
+
+    const [payinsRaw, count] = await Promise.all([
+      Payin.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean({ getters: true }),
+      Payin.countDocuments(filter),
+    ]);
     const payins = payinsRaw.map((p) => ({
       ...p,
       amount: toNum(p.amount),
       detectedAmount: p.detectedAmount != null ? toNum(p.detectedAmount) : null,
     }));
-    return res.json({ success: true, msg: 'Payins fetched', count: payins.length, payins });
+    return res.json({ success: true, msg: 'Payins fetched', count, page: pageNum, limit: limitNum, totalPages: Math.ceil(count / limitNum), payins });
   } catch (err) {
     return res.status(500).json({ success: 'failed', msg: 'Failed to fetch payins' });
   }
@@ -182,10 +194,22 @@ exports.getPayinList = async (req, res) => {
 
 exports.getTransactions = async (req, res) => {
   try {
+    const { page = 1, limit = 20, status, type, note, network } = req.query;
     const filter = { user: req.user.userId };
-    const txns = await Transaction.find(filter).sort({ createdAt: -1 }).lean({ getters: true });
-    // map to required shape
-    const transactions = txns.map((t) => ({
+    if (status && ['pending', 'success', 'failed', 'reversed'].includes(status)) filter.status = status;
+    if (type && ['credit', 'debit'].includes(type)) filter.type = type;
+    if (note && ['payin', 'payout', 'reversal'].includes(note)) filter.note = note;
+    if (network && ['TRC20', 'BEP20'].includes(String(network).toUpperCase())) filter.network = String(network).toUpperCase();
+
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+    const skip = (pageNum - 1) * limitNum;
+
+    const [txnsRaw, count] = await Promise.all([
+      Transaction.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean({ getters: true }),
+      Transaction.countDocuments(filter),
+    ]);
+    const transactions = txnsRaw.map((t) => ({
       trnId: t.trnId,
       amount: t.amount ? parseFloat(t.amount.toString()) : t.amount,
       type: t.type,
@@ -198,7 +222,7 @@ exports.getTransactions = async (req, res) => {
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
     }));
-    return res.json({ success: true, msg: 'Transactions fetched', count: transactions.length, transactions });
+    return res.json({ success: true, msg: 'Transactions fetched', count, page: pageNum, limit: limitNum, totalPages: Math.ceil(count / limitNum), transactions });
   } catch (err) {
     return res.status(500).json({ success: 'failed', msg: 'Failed to fetch transactions' });
   }

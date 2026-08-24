@@ -85,15 +85,19 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
 
 ### List Payins
 
-#### Endpoint: `GET /api/user/payins`
-- **Description:** Get all payins for logged-in user, newest first.
+#### Endpoint: `GET /api/user/payins?page=1&limit=20&status=pending&network=BEP20`
+- **Description:** Get payins for logged-in user with pagination, newest first.
 - **Headers:** `Authorization: Bearer <token>`
+- **Query Params:** `page` (default 1), `limit` (default 20, max 100), `status` (`pending|success|failed|reversed` optional), `network` (`TRC20|BEP20` optional)
 - **Response Success (200):**
   ```json
   {
     "success": true,
     "msg": "Payins fetched",
-    "count": 2,
+    "count": 50,
+    "page": 1,
+    "limit": 20,
+    "totalPages": 3,
     "payins": [
       {
         "payinId": "PAY202608240001",
@@ -117,15 +121,19 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
 
 ### List Transactions
 
-#### Endpoint: `GET /api/user/transactions`
-- **Description:** Ledger history for logged-in user, newest first. Every transaction contains `balanceAfter` (wallet after that row).
+#### Endpoint: `GET /api/user/transactions?page=1&limit=20&status=pending&type=credit&note=payin&network=BEP20`
+- **Description:** Ledger history for logged-in user with pagination, newest first. Every transaction contains `balanceAfter` (wallet after that row).
 - **Headers:** `Authorization: Bearer <token>`
+- **Query Params:** `page` (default 1), `limit` (default 20, max 100), `status` (`pending|success|failed|reversed`), `type` (`credit|debit`), `note` (`payin|payout|reversal`), `network` (`TRC20|BEP20`) all optional
 - **Response Success (200):**
   ```json
   {
     "success": true,
     "msg": "Transactions fetched",
-    "count": 2,
+    "count": 50,
+    "page": 1,
+    "limit": 20,
+    "totalPages": 3,
     "transactions": [
       {
         "trnId": "TXN202608240002",

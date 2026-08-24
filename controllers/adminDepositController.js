@@ -41,16 +41,18 @@ async function syncExchangeRate(currency, network, rate, updatedBy) {
   if (rate == null) return;
   const pr = Number(rate);
   if (!isFinite(pr) || pr <= 0) return;
-  const netVal = network ? String(network).toUpperCase() : null;
-  await ExchangeRate.updateMany({ currency, network: netVal, isActive: true }, { $set: { isActive: false } });
-  let doc = await ExchangeRate.findOne({ currency, network: netVal });
+  // same for every channel - always global (network null)
+  const netVal = null;
+  await ExchangeRate.updateMany({ currency, network: null, isActive: true }, { $set: { isActive: false } });
+  await ExchangeRate.updateMany({ currency, network: { $in: ['TRC20', 'BEP20'] }, isActive: true }, { $set: { isActive: false } });
+  let doc = await ExchangeRate.findOne({ currency, network: null });
   if (doc) {
     doc.rate = pr;
     doc.isActive = true;
     doc.updatedBy = updatedBy;
     await doc.save();
   } else {
-    await ExchangeRate.create({ currency, network: netVal, rate: pr, isActive: true, updatedBy });
+    await ExchangeRate.create({ currency, network: null, rate: pr, isActive: true, updatedBy });
   }
 }
 
@@ -106,14 +108,14 @@ exports.createDepositAddress = async (req, res) => {
       createdBy: req.user.userId,
     });
 
-    // allow changing exchange rate along with address
+    // allow changing exchange rate along with address (global for every channel)
     const rateVal = exchangeRate != null ? exchangeRate : rate;
     if (rateVal != null) {
       await syncExchangeRate(currency, network, rateVal, req.user.userId);
     }
     let exchangeRateDoc = null;
     if (rateVal != null) {
-      exchangeRateDoc = await ExchangeRate.findOne({ currency, network, isActive: true }).lean();
+      exchangeRateDoc = await ExchangeRate.findOne({ currency, network: null, isActive: true }).lean() || await ExchangeRate.findOne({ currency, isActive: true }).lean();
       if (exchangeRateDoc && exchangeRateDoc.rate != null) exchangeRateDoc.rate = parseFloat(exchangeRateDoc.rate.toString());
     }
 
@@ -167,7 +169,7 @@ exports.updateDepositAddress = async (req, res) => {
     let exchangeRateDoc = null;
     if (rateVal != null) {
       await syncExchangeRate(doc.currency, doc.network, rateVal, req.user.userId);
-      exchangeRateDoc = await ExchangeRate.findOne({ currency: doc.currency, network: doc.network, isActive: true }).lean();
+      exchangeRateDoc = await ExchangeRate.findOne({ currency: doc.currency, network: null, isActive: true }).lean() || await ExchangeRate.findOne({ currency: doc.currency, isActive: true }).lean();
       if (exchangeRateDoc && exchangeRateDoc.rate != null) exchangeRateDoc.rate = parseFloat(exchangeRateDoc.rate.toString());
     }
 

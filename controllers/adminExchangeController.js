@@ -1,18 +1,9 @@
 const ExchangeRate = require('../models/ExchangeRate');
 
 async function getRateFor(currency = 'USDT', network = null) {
-  // prefer network-specific, fallback to global (network null)
-  let rateDoc = null;
-  if (network) {
-    rateDoc = await ExchangeRate.findOne({ currency, network, isActive: true }).lean();
-  }
-  if (!rateDoc) {
-    rateDoc = await ExchangeRate.findOne({ currency, network: null, isActive: true }).lean();
-  }
-  if (!rateDoc) {
-    // try any active for currency
-    rateDoc = await ExchangeRate.findOne({ currency, isActive: true }).lean();
-  }
+  // Exchange rate is same for every channel (global) - ignore network
+  const rateDoc = await ExchangeRate.findOne({ currency, network: null, isActive: true }).lean()
+    || await ExchangeRate.findOne({ currency, isActive: true }).lean();
   if (rateDoc && rateDoc.rate != null) {
     const r = parseFloat(rateDoc.rate.toString());
     return isNaN(r) ? 1 : r;
@@ -65,28 +56,25 @@ exports.getCurrentRate = async (req, res) => {
 
 exports.upsertExchangeRate = async (req, res) => {
   try {
-    let { currency, network, rate, label, isActive } = req.body;
+    let { currency, rate, label, isActive } = req.body;
+    // network is ignored - rate is same for every channel (global)
+    const netVal = null;
     currency = currency ? String(currency).toUpperCase() : 'USDT';
     if (currency !== 'USDT') return res.status(400).json({ success: 'failed', msg: 'currency must be USDT' });
     if (rate == null) return res.status(400).json({ success: 'failed', msg: 'rate is required' });
     const parsedRate = Number(rate);
     if (!isFinite(parsedRate) || parsedRate <= 0) return res.status(400).json({ success: 'failed', msg: 'Invalid rate' });
 
-    // network can be null/global or TRC20/BEP20
-    let netVal = null;
-    if (network != null && String(network).toLowerCase() !== 'global' && String(network).toLowerCase() !== 'null' && String(network).trim() !== '') {
-      netVal = String(network).toUpperCase().trim();
-      if (!['TRC20', 'BEP20'].includes(netVal)) return res.status(400).json({ success: 'failed', msg: 'network must be TRC20, BEP20 or null' });
-    }
-
-    // if setting active, deactivate previous active for same currency+network
+    // global rate - deactivate previous global active
     const activeFlag = isActive !== undefined ? Boolean(isActive) : true;
     if (activeFlag) {
-      await ExchangeRate.updateMany({ currency, network: netVal, isActive: true }, { $set: { isActive: false } });
+      await ExchangeRate.updateMany({ currency, network: null, isActive: true }, { $set: { isActive: false } });
+      // also deactivate any per-network actives to keep single global
+      await ExchangeRate.updateMany({ currency, network: { $in: ['TRC20', 'BEP20'] }, isActive: true }, { $set: { isActive: false } });
     }
 
-    // upsert by currency+network (unique active) or create new if inactive
-    let doc = await ExchangeRate.findOne({ currency, network: netVal });
+    // upsert global
+    let doc = await ExchangeRate.findOne({ currency, network: null });
     if (doc) {
       doc.rate = parsedRate;
       doc.label = label != null ? String(label).trim() : doc.label;
@@ -120,21 +108,15 @@ exports.updateExchangeRate = async (req, res) => {
     const doc = await ExchangeRate.findById(id);
     if (!doc) return res.status(404).json({ success: 'failed', msg: 'Exchange rate not found' });
 
-    let { rate, label, isActive, network, currency } = req.body;
+    let { rate, label, isActive, currency } = req.body;
+    // network is ignored - global rate only
 
     if (currency) {
       currency = String(currency).toUpperCase();
       if (currency !== 'USDT') return res.status(400).json({ success: 'failed', msg: 'currency must be USDT' });
       doc.currency = currency;
     }
-    if (network !== undefined) {
-      let netVal = null;
-      if (network != null && String(network).toLowerCase() !== 'global' && String(network).toLowerCase() !== 'null' && String(network).trim() !== '') {
-        netVal = String(network).toUpperCase().trim();
-        if (!['TRC20', 'BEP20'].includes(netVal)) return res.status(400).json({ success: 'failed', msg: 'network must be TRC20, BEP20 or null' });
-      }
-      doc.network = netVal;
-    }
+    doc.network = null;
     if (rate !== undefined) {
       const pr = Number(rate);
       if (!isFinite(pr) || pr <= 0) return res.status(400).json({ success: 'failed', msg: 'Invalid rate' });
