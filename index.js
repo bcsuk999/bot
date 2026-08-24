@@ -39,6 +39,7 @@ app.use(express.json());
 connectDB();
 
 app.use('/api/user', userRouter);
+app.use('/apii/user', userRouter); // alias for typo /apii/user/payin/exchange
 app.use('/api/admin', adminRouter);
 
 app.get('/', (req, res) => {
