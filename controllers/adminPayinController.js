@@ -50,10 +50,20 @@ exports.adminListPayins = async (req, res) => {
       Payin.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean({ getters: true }),
       Payin.countDocuments(filter),
     ]);
+    // enrich with linked transaction trnId (latest per payinId)
+    const payinIds = payinsRaw.map((p) => p.payinId).filter(Boolean)
+    let trnMap = {}
+    if (payinIds.length) {
+      const txns = await Transaction.find({ referenceId: { $in: payinIds } }).sort({ createdAt: -1 }).lean()
+      for (const t of txns) {
+        if (!trnMap[t.referenceId]) trnMap[t.referenceId] = t.trnId
+      }
+    }
     const payins = payinsRaw.map((p) => ({
       ...p,
       amount: p.amount != null ? parseFloat(p.amount.toString()) : p.amount,
       detectedAmount: p.detectedAmount != null ? parseFloat(p.detectedAmount.toString()) : null,
+      trnId: trnMap[p.payinId] || null,
     }));
     res.json({ success: true, msg: 'Payins fetched', count, page: pageNum, limit: limitNum, totalPages: Math.ceil(count / limitNum), payins });
   } catch (err) {

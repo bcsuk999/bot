@@ -179,9 +179,7 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
   ```json
   {
     "success": true,
-    "msg": "Balance fetched",
-    "balance": 70,
-    "currency": "USDT"
+    "balance": 70
   }
   ```
 - **Errors:**

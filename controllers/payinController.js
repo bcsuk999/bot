@@ -217,7 +217,7 @@ exports.getBalance = async (req, res) => {
       balance = parseFloat(last.balanceAfter.toString());
       if (isNaN(balance)) balance = 0;
     }
-    return res.json({ success: true, msg: 'Balance fetched', balance, currency: 'USDT' });
+    return res.json({ success: true, balance });
   } catch (err) {
     return res.status(500).json({ success: 'failed', msg: 'Failed to fetch balance' });
   }
