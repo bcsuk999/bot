@@ -125,12 +125,13 @@ Manage USDT deposit addresses per network. When user calls `POST /api/user/payin
 
 ### Approve Transaction (Credit)
 #### Endpoint: `POST /api/admin/transactions/:trnId/approve`
-- **Description:** Approves a `pending` `credit` transaction → sets `status=success`, `balanceAfter = previousSuccessBalance + amount`, updates linked Payin to `success` with `completedAt` and `detectedAmount`.
+- **Description:** Approves a `pending` `credit` transaction → `balanceAfter = previousSuccessBalance + (amount * exchangeRate)`. Exchange rate is fetched from `ExchangeRate` (global or per-network) or `exchangeRate` override in body. Updates linked Payin to `success` with `completedAt`, `detectedAmount`, `exchangeRate`, `creditedAmount`.
 - **Headers:** `Authorization: Bearer <admin_token>`
-- **Request Body (optional):** `{ "txHash": "0x...", "remark": "manual approve" }`
+- **Request Body (optional):** `{ "txHash": "0x...", "remark": "manual approve", "exchangeRate": 90 }`
+- If `exchangeRate` not provided, uses configured rate (`GET /api/admin/exchange-rates/current?currency=USDT&network=BEP20` else global, fallback `1`).
 - **Response:**
   ```json
-  { "success": true, "msg": "Transaction approved", "transaction": { "trnId":"TXN...", "amount":120, "type":"credit", "note":"payin", "remark":"BEP20 deposit", "balanceAfter":120, "status":"success" } }
+  { "success": true, "msg": "Transaction approved", "transaction": { "trnId":"TXN...", "amount":100, "type":"credit", "note":"payin", "remark":"BEP20 deposit", "balanceAfter":9000, "status":"success", "exchangeRate":90, "creditedAmount":9000 } }
   ```
 - **Errors:**
   - 404: `{ "success": "failed", "msg": "Transaction not found" }`
@@ -146,7 +147,7 @@ Manage USDT deposit addresses per network. When user calls `POST /api/user/payin
 
 ### Reverse Transaction
 #### Endpoint: `POST /api/admin/transactions/:trnId/reverse`
-- **Description:** Reverses a `success` credit transaction. Creates new `debit` reversal entry (`TXN new`) with `balanceAfter = currentBalance - amount`, marks original `status=reversed`, Payin `reversed`.
+- **Description:** Reverses a `success` credit transaction. Creates new `debit` reversal entry (`TXN new`) with `balanceAfter = currentBalance - creditedAmount` (where `creditedAmount = amount * exchangeRate` stored at approve), marks original `status=reversed`, Payin `reversed`.
 - **Request Body (optional):** `{ "remark": "user refund" }`
 - **Response:**
   ```json
@@ -172,6 +173,54 @@ Manage USDT deposit addresses per network. When user calls `POST /api/user/payin
 | `note` | `payin` \| `payout` \| `reversal` | |
 | `remark` | String | `BEP20 deposit` |
 | `balanceAfter` | Decimal128 → number | wallet after row |
+| `status` | `pending` \| `success` \| `failed` \| `reversed` | |
+| `userid` / `user` | Number / ObjectId | owner |
+| `referenceId` | String | `PAY...` |
+| `createdAt` / `updatedAt` | Date | |
+
+## Exchange Rate Config (Admin)
+
+Balance increase = `payin amount * exchangeRate`. Rate configurable per `USDT` global or per network (`TRC20`/`BEP20`), fallback `1`.
+
+### List Exchange Rates
+#### Endpoint: `GET /api/admin/exchange-rates`
+- **Headers:** `Authorization: Bearer <admin_token>`
+- **Query:** `currency` (default USDT), `network` (TRC20/BEP20/global), `isActive`, `page`, `limit`
+- **Response:** `{ "success": true, "msg": "Exchange rates fetched", "count": 1, "rates": [{ "_id":"...", "currency":"USDT", "network":null, "rate":90, "isActive":true }] }`
+
+### Get Current Rate
+#### Endpoint: `GET /api/admin/exchange-rates/current?currency=USDT&network=BEP20`
+- Also available to user: `GET /api/user/exchange-rate?currency=USDT&network=BEP20` (auth, same logic)
+- **Response:** `{ "success": true, "currency":"USDT", "network":"BEP20", "rate":90 }` — returns active network-specific else global else `1`.
+
+### Create / Upsert Exchange Rate
+#### Endpoint: `POST /api/admin/exchange-rates`
+- **Body:** `{ "currency":"USDT", "network":"BEP20" | "TRC20" | null, "rate":90, "label":"global 90", "isActive":true }`
+- If `isActive:true`, previous active for same `currency+network` auto-deactivated.
+- **Response:** `{ "success": true, "msg": "Exchange rate saved", "rate": {...} }`
+
+### Update Exchange Rate
+#### Endpoint: `PATCH /api/admin/exchange-rates/:id`
+- **Body:** `{ "rate":95, "label":"updated", "isActive":true, "network":"TRC20" }`
+- **Response:** `{ "success": true, "msg": "Exchange rate updated", "rate": {...} }`
+
+### Delete Exchange Rate
+#### Endpoint: `DELETE /api/admin/exchange-rates/:id`
+- **Response:** `{ "success": true, "msg": "Exchange rate deleted" }`
+
+---
+
+## Transaction Shape (with exchange rate)
+| Field | Type | Description |
+|-------|------|-------------|
+| `trnId` | String | `TXNYYYYMMDD####` |
+| `amount` | Decimal128 → number | 100 (original USDT) |
+| `creditedAmount` | Decimal128 → number | 9000 (`amount * rate`) |
+| `exchangeRate` | Decimal128 → number | 90 |
+| `type` | `credit` \| `debit` | |
+| `note` | `payin` \| `payout` \| `reversal` | |
+| `remark` | String | `BEP20 deposit` |
+| `balanceAfter` | Decimal128 → number | wallet after row (includes creditedAmount) |
 | `status` | `pending` \| `success` \| `failed` \| `reversed` | |
 | `userid` / `user` | Number / ObjectId | owner |
 | `referenceId` | String | `PAY...` |

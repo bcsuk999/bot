@@ -17,6 +17,13 @@ const {
   adminRejectTransaction,
   adminReverseTransaction,
 } = require('../controllers/adminPayinController');
+const {
+  listExchangeRates,
+  getCurrentRate,
+  upsertExchangeRate,
+  updateExchangeRate,
+  deleteExchangeRate,
+} = require('../controllers/adminExchangeController');
 const auth = require('../middleware/auth');
 const requireAdmin = require('../middleware/requireAdmin');
 
@@ -41,5 +48,12 @@ router.get('/transactions/:trnId', auth, requireAdmin, adminGetTransactionByTrnI
 router.post('/transactions/:trnId/approve', auth, requireAdmin, adminApproveTransaction);
 router.post('/transactions/:trnId/reject', auth, requireAdmin, adminRejectTransaction);
 router.post('/transactions/:trnId/reverse', auth, requireAdmin, adminReverseTransaction);
+
+// Admin exchange rate config (payin amount * rate = credited balance)
+router.get('/exchange-rates', auth, requireAdmin, listExchangeRates);
+router.get('/exchange-rates/current', auth, requireAdmin, getCurrentRate);
+router.post('/exchange-rates', auth, requireAdmin, upsertExchangeRate);
+router.patch('/exchange-rates/:id', auth, requireAdmin, updateExchangeRate);
+router.delete('/exchange-rates/:id', auth, requireAdmin, deleteExchangeRate);
 
 module.exports = router;

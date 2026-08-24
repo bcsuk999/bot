@@ -156,11 +156,13 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
   | Field | Type | Description |
   |-------|------|-------------|
   | `trnId` | String | Unique `TXNYYYYMMDD####`, indexed |
-  | `amount` | Number (Decimal128) | Requested amount |
+  | `amount` | Number (Decimal128) | Requested USDT amount (e.g. 100) |
+  | `creditedAmount` | Number (Decimal128) | `amount * exchangeRate` (e.g. 9000 if rate 90) |
+  | `exchangeRate` | Number (Decimal128) | Rate applied at approve (e.g. 90) |
   | `type` | String | `credit` \| `debit` |
   | `note` | String | `payin` \| `payout` \| `reversal` |
   | `remark` | String | e.g. `BEP20 deposit` |
-  | `balanceAfter` | Number (Decimal128) | Wallet after this transaction |
+  | `balanceAfter` | Number (Decimal128) | Wallet after this transaction (includes creditedAmount) |
   | `status` | String | `pending` \| `success` \| `failed` \| `reversed` |
   | `createdAt` | Date | Auto |
   | `updatedAt` | Date | Auto |
@@ -173,13 +175,13 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
 ### Get Balance
 
 #### Endpoint: `GET /api/user/balance`
-- **Description:** Current wallet balance = `balanceAfter` of last `status=success` transaction, else `0`. Pending payins do not count.
+- **Description:** Current wallet balance = `balanceAfter` of last `status=success` transaction, else `0`. Pending payins do not count. Balance increase on approve = `payin amount * exchangeRate` (e.g. 100 USDT * 90 = 9000).
 - **Headers:** `Authorization: Bearer <token>`
 - **Response Success (200):**
   ```json
   {
     "success": true,
-    "balance": 70
+    "balance": 9000
   }
   ```
 - **Errors:**
@@ -228,8 +230,20 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
 
 **Indexes:** `trnId unique`, `user`, `userid`, `status`, `referenceId`, `user+status`, `user+createdAt`
 
+### Get Exchange Rate (User)
+
+#### Endpoint: `GET /api/user/exchange-rate?currency=USDT&network=BEP20`
+- **Description:** Fetch current active exchange rate. Returns network-specific else global else `1`. `rate` is what multiplies payin amount into balance.
+- **Headers:** `Authorization: Bearer <token>`
+- **Response:**
+  ```json
+  { "success": true, "currency":"USDT", "network":"BEP20", "rate":90 }
+  ```
+
+---
+
 ## Flow (Why balance not instant)
 1. `POST /api/user/payin` → `Payin pending` + `Transaction pending, balanceAfter = old balance`
 2. User sends USDT on chain to `address`
-3. Admin/Monitor verifies `txHash`, amount, confirmations → flips to `success`, sets `balanceAfter = old + amount`
-4. `GET /api/user/balance` then reflects new balance
+3. Admin verifies `txHash` → `POST /api/admin/transactions/:trnId/approve` with optional `{"exchangeRate":90}` else uses configured rate → `creditedAmount = amount * rate`, `balanceAfter = old + creditedAmount`
+4. `GET /api/user/balance` → `{"success":true,"balance":9000}` reflects multiplied amount

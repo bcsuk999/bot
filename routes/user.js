@@ -3,6 +3,7 @@ const router = express.Router();
 const { register, login } = require('../controllers/userController');
 const { addBank, getBanks, updateBankStatus } = require('../controllers/bankController');
 const { createPayin, getPayinList, getTransactions, getBalance } = require('../controllers/payinController');
+const { getCurrentRate } = require('../controllers/adminExchangeController');
 const auth = require('../middleware/auth');
 
 router.post('/register', register);
@@ -13,6 +14,7 @@ router.post('/payin', auth, createPayin);
 router.get('/payins', auth, getPayinList);
 router.get('/transactions', auth, getTransactions);
 router.get('/balance', auth, getBalance);
+router.get('/exchange-rate', auth, getCurrentRate);
 
 // Bank routes - auth required, multiple banks per user
 router.post('/bankadd', auth, addBank);

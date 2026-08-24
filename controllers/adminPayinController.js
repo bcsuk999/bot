@@ -2,6 +2,7 @@ const Payin = require('../models/Payin');
 const Transaction = require('../models/Transaction');
 const Counter = require('../models/Counter');
 const User = require('../models/User');
+const { getRateFor } = require('./adminExchangeController');
 
 function formatTrnId(seq) {
   const d = new Date();
@@ -102,6 +103,8 @@ exports.adminListTransactions = async (req, res) => {
       remark: t.remark,
       balanceAfter: t.balanceAfter ? parseFloat(t.balanceAfter.toString()) : t.balanceAfter,
       status: t.status,
+      exchangeRate: t.exchangeRate != null ? parseFloat(t.exchangeRate.toString()) : null,
+      creditedAmount: t.creditedAmount != null ? parseFloat(t.creditedAmount.toString()) : null,
       referenceId: t.referenceId,
       network: t.network,
       currency: t.currency,
@@ -141,6 +144,8 @@ exports.adminGetTransactionByTrnId = async (req, res) => {
         remark: txn.remark,
         balanceAfter: parseFloat(txn.balanceAfter.toString()),
         status: txn.status,
+        exchangeRate: txn.exchangeRate != null ? parseFloat(txn.exchangeRate.toString()) : null,
+        creditedAmount: txn.creditedAmount != null ? parseFloat(txn.creditedAmount.toString()) : null,
         userid: txn.userid,
         user: txn.user,
         referenceId: txn.referenceId,
@@ -158,10 +163,11 @@ exports.adminGetTransactionByTrnId = async (req, res) => {
 };
 
 // Approve pending -> success (credit balance) by trnId
+// balance increase = amount * exchangeRate (admin configured rate)
 exports.adminApproveTransaction = async (req, res) => {
   try {
     const { trnId } = req.params;
-    const { txHash, remark } = req.body;
+    const { txHash, remark, exchangeRate: overrideRate } = req.body;
     const txn = await Transaction.findOne({ trnId });
     if (!txn) return res.status(404).json({ success: 'failed', msg: 'Transaction not found' });
     if (txn.status !== 'pending') return res.status(400).json({ success: 'failed', msg: `Cannot approve, status is ${txn.status}` });
@@ -173,10 +179,22 @@ exports.adminApproveTransaction = async (req, res) => {
 
     const currentBalance = await getCurrentBalance(txn.user);
     const amount = parseBalance(txn.amount);
-    const newBalance = currentBalance + amount;
+    // exchange rate factor: use override if provided, else fetch configured rate for currency/network
+    let rate = 1;
+    if (overrideRate != null) {
+      const pr = Number(overrideRate);
+      if (!isFinite(pr) || pr <= 0) return res.status(400).json({ success: 'failed', msg: 'Invalid exchangeRate' });
+      rate = pr;
+    } else {
+      rate = await getRateFor(txn.currency || 'USDT', txn.network || null);
+    }
+    const creditedAmount = amount * rate;
+    const newBalance = currentBalance + creditedAmount;
 
     txn.status = 'success';
     txn.balanceAfter = newBalance;
+    txn.exchangeRate = rate;
+    txn.creditedAmount = creditedAmount;
     if (txHash) txn.txHash = String(txHash).trim();
     if (remark) txn.remark = String(remark).trim();
     await txn.save();
@@ -190,6 +208,8 @@ exports.adminApproveTransaction = async (req, res) => {
         payin.completedAt = new Date();
         if (remark) payin.remark = String(remark).trim();
         payin.detectedAmount = amount;
+        payin.exchangeRate = rate;
+        payin.creditedAmount = creditedAmount;
         await payin.save();
       }
     }
@@ -205,6 +225,8 @@ exports.adminApproveTransaction = async (req, res) => {
         remark: txn.remark,
         balanceAfter: parseFloat(txn.balanceAfter.toString()),
         status: txn.status,
+        exchangeRate: txn.exchangeRate != null ? parseFloat(txn.exchangeRate.toString()) : null,
+        creditedAmount: txn.creditedAmount != null ? parseFloat(txn.creditedAmount.toString()) : null,
         createdAt: txn.createdAt,
         updatedAt: txn.updatedAt,
       },
@@ -259,6 +281,7 @@ exports.adminRejectTransaction = async (req, res) => {
 };
 
 // Reverse success -> create reversal debit entry + mark original reversed
+// deducts the same creditedAmount that was added (amount * exchangeRate)
 exports.adminReverseTransaction = async (req, res) => {
   try {
     const { trnId } = req.params;
@@ -270,8 +293,14 @@ exports.adminReverseTransaction = async (req, res) => {
 
     const currentBalance = await getCurrentBalance(original.user);
     const amount = parseBalance(original.amount);
-    if (currentBalance < amount) return res.status(400).json({ success: 'failed', msg: 'Insufficient balance to reverse' });
-    const newBalance = currentBalance - amount;
+    // use stored creditedAmount if available, else amount*rate
+    let credited = original.creditedAmount != null ? parseBalance(original.creditedAmount) : null;
+    if (credited == null || isNaN(credited)) {
+      const rate = original.exchangeRate != null ? parseBalance(original.exchangeRate) : await getRateFor(original.currency || 'USDT', original.network || null);
+      credited = amount * rate;
+    }
+    if (currentBalance < credited) return res.status(400).json({ success: 'failed', msg: 'Insufficient balance to reverse' });
+    const newBalance = currentBalance - credited;
 
     const seq = await getNextSequence('transactionId');
     const newTrnId = formatTrnId(seq);
@@ -289,6 +318,8 @@ exports.adminReverseTransaction = async (req, res) => {
       referenceId: original.trnId,
       network: original.network,
       currency: original.currency,
+      exchangeRate: original.exchangeRate != null ? parseBalance(original.exchangeRate) : null,
+      creditedAmount: credited,
     });
 
     // Mark original as reversed

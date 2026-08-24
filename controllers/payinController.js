@@ -198,6 +198,8 @@ exports.getTransactions = async (req, res) => {
       remark: t.remark,
       balanceAfter: t.balanceAfter ? parseFloat(t.balanceAfter.toString()) : t.balanceAfter,
       status: t.status,
+      exchangeRate: t.exchangeRate != null ? parseFloat(t.exchangeRate.toString()) : null,
+      creditedAmount: t.creditedAmount != null ? parseFloat(t.creditedAmount.toString()) : null,
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
     }));

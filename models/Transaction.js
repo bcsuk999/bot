@@ -69,6 +69,16 @@ const transactionSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    exchangeRate: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: null,
+      get: (v) => (v ? parseFloat(v.toString()) : v),
+    },
+    creditedAmount: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: null,
+      get: (v) => (v ? parseFloat(v.toString()) : v),
+    },
   },
   {
     timestamps: true,
