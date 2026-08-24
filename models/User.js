@@ -37,9 +37,10 @@ const userSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-// Proper indexing
+// Proper indexing - optimized for auth queries
 userSchema.index({ mobile: 1 }, { unique: true });
 userSchema.index({ userid: 1 }, { unique: true });
+userSchema.index({ mobile: 1, role: 1 }); // fast admin lookup: findOne({mobile, role})
 userSchema.index({ role: 1, status: 1 });
 userSchema.index({ createdAt: -1 });
 

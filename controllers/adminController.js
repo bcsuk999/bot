@@ -6,9 +6,14 @@ require('../db/conn');
 exports.login = async (req, res) => {
   try {
     const { mobile, password } = req.body;
+
+    if (!mobile || !password) {
+      return res.status(400).json({ success: 'failed', msg: 'Mobile and password are required' });
+    }
     
-    const admin = await User.findOne({ mobile, role: 'admin' });
-    if (!admin) {
+    // Use mobile unique index (fastest) + lean, then check role in JS
+    const admin = await User.findOne({ mobile }).lean();
+    if (!admin || admin.role !== 'admin') {
       return res.status(404).json({ success: 'failed', msg: 'Admin not found' });
     }
 
