@@ -31,36 +31,17 @@ async function resolveRate() {
 
 /**
  * GET /api/user/payin/exchange
- * Returns current payin exchange rate.
+ * Returns current exchange rate (single rate, no currency param).
  * Admin can change anytime via POST /api/admin/exchange-rates {currency:"USDT", rate:115}
  * Public/optionalAuth — works without token and with valid token; invalid token -> 401 via middleware.
- * Response keeps project convention {success:true} plus spec {status:"success"} and rate.
- * Example: { success:true, status:"success", rate:112, display:"1$ = 112 INR" }
+ * Response: { success:true, rate:112 }
  */
 exports.getPayinExchangeRate = async (req, res) => {
   try {
     const rate = await resolveRate();
-    return res.json({
-      success: true,
-      status: 'success',
-      msg: 'Exchange rate fetched',
-      rate,
-      currency: 'USDT',
-      base: 'USD',
-      quote: 'INR',
-      display: `1$ = ${rate} INR`,
-    });
+    return res.json({ success: true, rate });
   } catch (err) {
-    return res.json({
-      success: true,
-      status: 'success',
-      msg: 'Exchange rate fetched',
-      rate: FALLBACK_RATE,
-      currency: 'USDT',
-      base: 'USD',
-      quote: 'INR',
-      display: `1$ = ${FALLBACK_RATE} INR`,
-    });
+    return res.json({ success: true, rate: FALLBACK_RATE });
   }
 };
 

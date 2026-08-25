@@ -2,6 +2,7 @@ const Payin = require('../models/Payin');
 const Transaction = require('../models/Transaction');
 const Counter = require('../models/Counter');
 const DepositAddress = require('../models/DepositAddress');
+const { resolveRate } = require('./payinExchangeController');
 
 async function getDepositAddress(network) {
   try {
@@ -43,11 +44,11 @@ exports.createPayin = async (req, res) => {
     let { amount, amt, network, net, currency } = req.body;
     amount = amount != null ? amount : amt;
     network = network != null ? network : net;
-    currency = currency ? String(currency).toUpperCase() : 'USDT';
-
-    if (amount == null || network == null) {
-      return res.status(400).json({ success: 'failed', msg: 'amount and network are required' });
+    if (amount == null || network == null || currency == null) {
+      return res.status(400).json({ success: 'failed', msg: 'amount, network, and currency are required' });
     }
+
+    currency = String(currency).toUpperCase();
 
     if (currency !== 'USDT') {
       return res.status(400).json({ success: 'failed', msg: 'currency must be USDT' });
@@ -67,6 +68,9 @@ exports.createPayin = async (req, res) => {
     if (!address) {
       return res.status(400).json({ success: 'failed', msg: `Deposit address not configured for ${network}` });
     }
+
+    const exchangeRate = await resolveRate();
+    const receivedAmount = parsedAmount * exchangeRate;
 
     const payinSeq = await getNextSequence('payinId');
     const txnSeq = await getNextSequence('transactionId');
@@ -111,6 +115,8 @@ exports.createPayin = async (req, res) => {
       transactionType: 'payin',
       requiredConfirmations,
       remark: `${currency} ${network} deposit`,
+      exchangeRate,
+      creditedAmount: receivedAmount,
     });
 
     const transaction = await Transaction.create({
@@ -130,28 +136,12 @@ exports.createPayin = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      msg: 'Payin created',
-      payin: {
-        id: payin.payinId,
-        currency: payin.currency,
-        amount: parseFloat(payin.amount.toString()),
-        network: payin.network,
-        address: payin.address,
-        status: payin.status,
-        transactionType: payin.transactionType,
-        remark: payin.remark,
-      },
-      transaction: {
-        trnId: transaction.trnId,
-        amount: parseFloat(transaction.amount.toString()),
-        type: transaction.type,
-        note: transaction.note,
-        remark: transaction.remark,
-        balanceAfter: parseFloat(transaction.balanceAfter.toString()),
-        status: transaction.status,
-        createdAt: transaction.createdAt,
-        updatedAt: transaction.updatedAt,
-      },
+      address: payin.address,
+      currency: payin.currency,
+      amount: parseFloat(payin.amount.toString()),
+      network: payin.network,
+      exchangeRate,
+      receivedAmount,
     });
   } catch (err) {
     console.error('createPayin error:', err);
@@ -182,11 +172,17 @@ exports.getPayinList = async (req, res) => {
       Payin.countDocuments(filter),
     ]);
     const payins = payinsRaw.map((p) => ({
-      ...p,
+      payinId: p.payinId,
+      currency: p.currency,
       amount: toNum(p.amount),
-      detectedAmount: p.detectedAmount != null ? toNum(p.detectedAmount) : null,
+      receivedAmount: p.detectedAmount != null ? toNum(p.detectedAmount) : null,
+      status: p.status,
+      transactionType: p.transactionType,
+      remark: p.remark,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
     }));
-    return res.json({ success: true, msg: 'Payins fetched', count, page: pageNum, limit: limitNum, totalPages: Math.ceil(count / limitNum), payins });
+    return res.json({ success: true, count, page: pageNum, limit: limitNum, totalPages: Math.ceil(count / limitNum), payins });
   } catch (err) {
     return res.status(500).json({ success: 'failed', msg: 'Failed to fetch payins' });
   }

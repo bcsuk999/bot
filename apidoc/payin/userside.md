@@ -26,18 +26,18 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
   ```json
   {
     "amount": 120,
-    "network": "BEP20"
+    "network": "BEP20",
+    "currency": "USDT"
   }
   ```
-  Aliases accepted: `amt` for `amount`, `net` for `network`. `currency` defaults to `USDT` (only `USDT` allowed).
+  Aliases accepted: `amt` for `amount`, `net` for `network`. `currency` is **required** (only `USDT` allowed).
   ```json
-  { "amt": 120, "net": "TRC20" }
-  { "amount": 120, "network": "TRC20", "currency": "USDT" }
+  { "amt": 120, "net": "TRC20", "currency": "USDT" }
   ```
 - **Validation:**
   - `amount` / `amt` required, must be number `>0`
   - `network` / `net` required, must be `TRC20` or `BEP20` (case-insensitive, stored uppercase)
-  - `currency` if sent must be `USDT`
+  - `currency` **required**, must be `USDT`
 - **Deposit Addresses (hardcoded Phase 1):**
   - `TRC20` → `TQRcQg2naLxZGxuWCv7E53VgEasRAdPL8v`
   - `BEP20` → `0x4993D6bD7E9b27D5B306F36ec0b4Cea8927BB2fB`
@@ -46,33 +46,17 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
   ```json
   {
     "success": true,
-    "msg": "Payin created",
-    "payin": {
-      "id": "PAY202608240001",
-      "currency": "USDT",
-      "amount": 120,
-      "network": "BEP20",
-      "address": "0x4993D6bD7E9b27D5B306F36ec0b4Cea8927BB2fB",
-      "status": "pending",
-      "transactionType": "payin",
-      "remark": "USDT BEP20 deposit"
-    },
-    "transaction": {
-      "trnId": "TXN202608240001",
-      "amount": 120,
-      "type": "credit",
-      "note": "payin",
-      "remark": "BEP20 deposit",
-      "balanceAfter": 0,
-      "status": "pending",
-      "createdAt": "2026-08-24T10:00:00.000Z",
-      "updatedAt": "2026-08-24T10:00:00.000Z"
-    }
+    "address": "0x4993D6bD7E9b27D5B306F36ec0b4Cea8927BB2fB",
+    "currency": "USDT",
+    "amount": 120,
+    "network": "BEP20",
+    "exchangeRate": 112,
+    "receivedAmount": 13440
   }
   ```
-  Note: `balanceAfter` in pending txn = current balance **before** credit (unchanged). After admin confirm success, a new `balanceAfter` will be `old + amount`.
+  Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR).
 - **Errors:**
-  - 400: `{ "success": "failed", "msg": "amount and network are required" }`
+  - 400: `{ "success": "failed", "msg": "amount, network, and currency are required" }`
   - 400: `{ "success": "failed", "msg": "currency must be USDT" }`
   - 400: `{ "success": "failed", "msg": "Invalid amount" }`
   - 400: `{ "success": "failed", "msg": "network must be TRC20 or BEP20" }`
@@ -93,7 +77,6 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
   ```json
   {
     "success": true,
-    "msg": "Payins fetched",
     "count": 50,
     "page": 1,
     "limit": 20,
@@ -102,13 +85,13 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
       {
         "payinId": "PAY202608240001",
         "currency": "USDT",
-        "network": "BEP20",
         "amount": 120,
-        "address": "0x4993...",
+        "receivedAmount": 13440,
         "status": "pending",
         "transactionType": "payin",
         "remark": "USDT BEP20 deposit",
-        "createdAt": "..."
+        "createdAt": "...",
+        "updatedAt": "..."
       }
     ]
   }
@@ -215,6 +198,8 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
 | `txHash` | String | Blockchain hash (set on confirm) |
 | `confirmations` / `requiredConfirmations` | Number | e.g. TRC20 20, BEP20 15 |
 | `remark` | String | `USDT {network} deposit` |
+| `exchangeRate` | Decimal128 | Rate at creation (e.g. 112) |
+| `creditedAmount` | Decimal128 | `amount * exchangeRate` (e.g. 13440) |
 | `createdAt` / `updatedAt` | Date | Auto |
 
 **Indexes:** `payinId unique`, `user`, `userid`, `status`, `user+status`, `user+createdAt`
@@ -240,12 +225,12 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
 
 ### Get Exchange Rate (User)
 
-#### Endpoint: `GET /api/user/exchange-rate?currency=USDT&network=BEP20`
-- **Description:** Fetch current active exchange rate. Returns network-specific else global else `1`. `rate` is what multiplies payin amount into balance.
-- **Headers:** `Authorization: Bearer <token>`
+#### Endpoint: `GET /api/user/payin/exchange`
+- **Description:** Fetch current exchange rate. Single rate, no currency/network params.
+- **Headers:** `Authorization: Bearer <token>` (optional — works without token too)
 - **Response:**
   ```json
-  { "success": true, "currency":"USDT", "network":"BEP20", "rate":90 }
+  { "success": true, "rate": 112 }
   ```
 
 ---
