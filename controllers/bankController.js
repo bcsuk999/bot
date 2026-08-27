@@ -31,7 +31,20 @@ exports.addBank = async (req, res) => {
 
     await bank.save();
 
-    res.status(201).json({ success: true, msg: 'Bank added successfully', bank });
+    res.status(201).json({
+      success: true,
+      msg: 'Bank added successfully',
+      bank: {
+        userid: bank.userid,
+        bankName: bank.bankName,
+        holderName: bank.holderName,
+        accountNumber: bank.accountNumber,
+        ifsc: bank.ifsc,
+        status: bank.status,
+        createdAt: bank.createdAt,
+        updatedAt: bank.updatedAt,
+      },
+    });
   } catch (err) {
     if (err.code === 11000) {
       const field = Object.keys(err.keyPattern)[0];
@@ -50,8 +63,17 @@ exports.getBanks = async (req, res) => {
     }
 
     const banks = await Bank.find(filter).sort({ createdAt: -1 }).lean();
+    const cleaned = banks.map((b) => ({
+      bankName: b.bankName,
+      holderName: b.holderName,
+      accountNumber: b.accountNumber,
+      ifsc: b.ifsc,
+      status: b.status,
+      createdAt: b.createdAt,
+      updatedAt: b.updatedAt,
+    }));
 
-    res.json({ success: true, msg: 'Banks fetched', count: banks.length, banks });
+    res.json({ success: true, msg: 'Banks fetched', count: cleaned.length, banks: cleaned });
   } catch (err) {
     res.status(500).json({ success: 'failed', msg: 'Failed to fetch banks' });
   }
@@ -59,22 +81,17 @@ exports.getBanks = async (req, res) => {
 
 exports.updateBankStatus = async (req, res) => {
   try {
-    const { bankId, accountNumber, status } = req.body;
+    const { accountNumber, status } = req.body;
 
     if (!status || !['enable', 'disable'].includes(status)) {
       return res.status(400).json({ success: 'failed', msg: 'Status must be enable or disable' });
     }
 
-    if (!bankId && !accountNumber) {
-      return res.status(400).json({ success: 'failed', msg: 'bankId or accountNumber is required' });
+    if (!accountNumber) {
+      return res.status(400).json({ success: 'failed', msg: 'accountNumber is required' });
     }
 
-    let bank;
-    if (bankId) {
-      bank = await Bank.findOne({ _id: bankId, user: req.user.userId });
-    } else {
-      bank = await Bank.findOne({ accountNumber: accountNumber.trim(), user: req.user.userId });
-    }
+    const bank = await Bank.findOne({ accountNumber: accountNumber.trim(), user: req.user.userId });
 
     if (!bank) {
       return res.status(404).json({ success: 'failed', msg: 'Bank not found' });

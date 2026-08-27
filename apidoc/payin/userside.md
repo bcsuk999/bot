@@ -120,6 +120,7 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
     "transactions": [
       {
         "trnId": "TXN202608240002",
+        "currency": "USDT",
         "amount": 50,
         "type": "credit",
         "note": "payin",
@@ -131,6 +132,7 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
       },
       {
         "trnId": "TXN202608240001",
+        "currency": "USDT",
         "amount": 120,
         "type": "credit",
         "note": "payin",
@@ -147,6 +149,7 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
   | Field | Type | Description |
   |-------|------|-------------|
   | `trnId` | String | Unique `TXNYYYYMMDD####`, indexed |
+  | `currency` | String | `USDT` |
   | `amount` | Number (Decimal128) | Requested USDT amount (e.g. 100) |
   | `creditedAmount` | Number (Decimal128) | `amount * exchangeRate` (e.g. 9000 if rate 90) |
   | `exchangeRate` | Number (Decimal128) | Rate applied at approve (e.g. 90) |

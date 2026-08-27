@@ -207,6 +207,7 @@ exports.getTransactions = async (req, res) => {
     ]);
     const transactions = txnsRaw.map((t) => ({
       trnId: t.trnId,
+      currency: t.currency,
       amount: t.amount ? parseFloat(t.amount.toString()) : t.amount,
       type: t.type,
       note: t.note,

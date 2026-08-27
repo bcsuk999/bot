@@ -36,8 +36,6 @@ If missing/invalid → `401 { "success": "failed", "msg": "Unauthorized: ..." }`
     "success": true,
     "msg": "Bank added successfully",
     "bank": {
-      "_id": "bank_id",
-      "user": "user_objectId",
       "userid": 3056579,
       "bankName": "SBI",
       "holderName": "Rahul Sharma",
@@ -77,7 +75,6 @@ If missing/invalid → `401 { "success": "failed", "msg": "Unauthorized: ..." }`
     "count": 2,
     "banks": [
       {
-        "_id": "bank_id_1",
         "bankName": "SBI",
         "holderName": "Rahul Sharma",
         "accountNumber": "123456789012",
@@ -103,17 +100,15 @@ If missing/invalid → `401 { "success": "failed", "msg": "Unauthorized: ..." }`
   Authorization: Bearer <token>
   Content-Type: application/json
   ```
-- **Request Body (one of `bankId` or `accountNumber` required):**
+- **Request Body (`accountNumber` required):**
   ```json
   {
-    "bankId": "bank_objectId (optional if accountNumber given)",
-    "accountNumber": "string (optional if bankId given)",
+    "accountNumber": "string (required)",
     "status": "enable | disable (required)"
   }
   ```
-  Examples:
+  Example:
   ```json
-  { "bankId": "665a...", "status": "disable" }
   { "accountNumber": "123456789012", "status": "enable" }
   ```
 - **Response Success (200):**
@@ -122,7 +117,6 @@ If missing/invalid → `401 { "success": "failed", "msg": "Unauthorized: ..." }`
     "success": true,
     "msg": "Bank status updated successfully",
     "bank": {
-      "_id": "bank_id",
       "bankName": "SBI",
       "accountNumber": "123456789012",
       "status": "disable"
@@ -131,7 +125,7 @@ If missing/invalid → `401 { "success": "failed", "msg": "Unauthorized: ..." }`
   ```
 - **Errors:**
   - 400: `{ "success": "failed", "msg": "Status must be enable or disable" }`
-  - 400: `{ "success": "failed", "msg": "bankId or accountNumber is required" }`
+  - 400: `{ "success": "failed", "msg": "accountNumber is required" }`
   - 404: `{ "success": "failed", "msg": "Bank not found" }`
   - 401: `{ "success": "failed", "msg": "Unauthorized: ..." }`
   - 500: `{ "success": "failed", "msg": "Failed to update bank status" }`
