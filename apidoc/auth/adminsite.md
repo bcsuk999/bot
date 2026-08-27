@@ -75,3 +75,43 @@ Local: http://localhost:5000
 - Admin can change any user's status via the PATCH endpoint
 - Admin can login using `/api/admin/login`
 - Token expires in 10 days
+
+---
+
+### List / Search Users
+
+#### Endpoint: `GET /api/admin/users`
+- **Description:** Search users by `uid` / `mobile`, filter by date range (user `createdAt`), sort by `balance` (highest/lowest). `balance` = `balanceAfter` of last `success` transaction; `totalDeposit` = sum of `creditedAmount` for `success` + `credit` + `payin` transactions.
+- **Headers:** `Authorization: Bearer <admin_token>`
+- **Query Params (all optional):**
+  - `uid`: number (exact `userid` match)
+  - `mobile`: string (exact match)
+  - `sortBalance`: `asc` (lowest first) | `desc` (highest first)
+  - `from` / `to`: date (`YYYY-MM-DD`) — filter user `createdAt` range
+  - `page`: number (default 1)
+  - `limit`: number (default 20, max 100)
+- **Example:** `GET /api/admin/users?mobile=9876543210&sortBalance=desc&from=2026-01-01&to=2026-08-27`
+- **Response (200):**
+  ```json
+  {
+    "success": true,
+    "msg": "Users fetched",
+    "count": 1,
+    "page": 1,
+    "limit": 20,
+    "totalPages": 1,
+    "users": [
+      {
+        "uid": 3056579,
+        "mobile": "9876543210",
+        "balance": 13440,
+        "totalDeposit": 13440,
+        "status": "active"
+      }
+    ]
+  }
+  ```
+- **Errors:**
+  - 401: `{ "success": "failed", "msg": "Unauthorized: ..." }`
+  - 403: `{ "success": "failed", "msg": "Forbidden: Admin access required" }`
+  - 500: `{ "success": "failed", "msg": "Failed to fetch users" }`
