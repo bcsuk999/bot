@@ -102,6 +102,53 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
 
 ---
 
+### Submit Transaction Hash
+
+#### Endpoint: `POST /api/user/payin/submit-tx`
+- **Description:** After paying USDT on Binance/crypto wallet, user submits the `txHash` to cross-check against the payin. Can only be submitted **once** per payin (if already set → 409). Payin must be `status=pending`.
+- **Headers:**
+  ```
+  Authorization: Bearer <token>
+  Content-Type: application/json
+  ```
+- **Request Body:**
+  ```json
+  {
+    "payinId": "PAY202608240001",
+    "txHash": "0xabc123...64hexchars"
+  }
+  ```
+- **Validation:**
+  - `payinId` required
+  - `txHash` required, must be `0x` + 64 hex chars (EVM/TRC20/BEP20 format)
+  - Payin must belong to the user and exist
+  - Payin `status` must be `pending`
+  - `txHash` must not already be set (submit once only)
+- **Response Success (200):**
+  ```json
+  {
+    "success": true,
+    "msg": "Transaction hash submitted",
+    "payin": {
+      "payinId": "PAY202608240001",
+      "txHash": "0xabc123...",
+      "network": "BEP20",
+      "status": "pending",
+      "txSubmittedAt": "2026-08-24T10:10:00.000Z"
+    }
+  }
+  ```
+- **Errors:**
+  - 400: `{ "success": "failed", "msg": "payinId and txHash are required" }`
+  - 400: `{ "success": "failed", "msg": "Invalid transaction hash format" }`
+  - 400: `{ "success": "failed", "msg": "Cannot submit txHash for payin with status success" }`
+  - 404: `{ "success": "failed", "msg": "Payin not found" }`
+  - 409: `{ "success": "failed", "msg": "Transaction hash already submitted", "txHash": "0x..." }`
+  - 401: `{ "success": "failed", "msg": "Unauthorized: ..." }`
+  - 500: `{ "success": "failed", "msg": "Failed to submit transaction hash" }`
+
+---
+
 ### List Transactions
 
 #### Endpoint: `GET /api/user/transactions?page=1&limit=20&status=pending&type=credit&note=payin&network=BEP20`

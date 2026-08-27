@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { register, login } = require('../controllers/userController');
 const { addBank, getBanks, updateBankStatus } = require('../controllers/bankController');
-const { createPayin, getPayinList, getTransactions, getBalance } = require('../controllers/payinController');
+const { createPayin, getPayinList, getTransactions, getBalance, submitPayinTxHash } = require('../controllers/payinController');
 const { getPayinExchangeRate } = require('../controllers/payinExchangeController');
 const auth = require('../middleware/auth');
 const optionalAuth = require('../middleware/optionalAuth');
@@ -17,6 +17,7 @@ router.get('/payin/exchange', optionalAuth, getPayinExchangeRate);
 
 // Payin - creates pending payin + pending transaction with balanceAfter (no instant credit)
 router.post('/payin', auth, createPayin);
+router.post('/payin/submit-tx', auth, submitPayinTxHash);
 router.get('/payins', auth, getPayinList);
 router.get('/transactions', auth, getTransactions);
 router.get('/balance', auth, getBalance);

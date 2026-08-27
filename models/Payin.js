@@ -56,6 +56,10 @@ const payinSchema = new mongoose.Schema(
       index: true,
       sparse: true,
     },
+    txSubmittedAt: {
+      type: Date,
+      default: null,
+    },
     confirmations: {
       type: Number,
       default: 0,

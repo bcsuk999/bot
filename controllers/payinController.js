@@ -240,3 +240,54 @@ exports.getBalance = async (req, res) => {
     return res.status(500).json({ success: 'failed', msg: 'Failed to fetch balance' });
   }
 };
+
+// TX hash validation: 0x followed by 64 hex chars (EVM/TRC20/BEP20) or 64 hex chars
+function isValidTxHash(hash) {
+  return typeof hash === 'string' && /^0x?[a-fA-F0-9]{64}$/.test(hash.trim());
+}
+
+exports.submitPayinTxHash = async (req, res) => {
+  try {
+    const { payinId, txHash } = req.body;
+
+    if (!payinId || !txHash) {
+      return res.status(400).json({ success: 'failed', msg: 'payinId and txHash are required' });
+    }
+
+    const cleanHash = String(txHash).trim();
+    if (!isValidTxHash(cleanHash)) {
+      return res.status(400).json({ success: 'failed', msg: 'Invalid transaction hash format' });
+    }
+
+    const payin = await Payin.findOne({ payinId, user: req.user.userId });
+    if (!payin) {
+      return res.status(404).json({ success: 'failed', msg: 'Payin not found' });
+    }
+
+    if (payin.status !== 'pending') {
+      return res.status(400).json({ success: 'failed', msg: `Cannot submit txHash for payin with status ${payin.status}` });
+    }
+
+    if (payin.txHash) {
+      return res.status(409).json({ success: 'failed', msg: 'Transaction hash already submitted', txHash: payin.txHash });
+    }
+
+    payin.txHash = cleanHash;
+    payin.txSubmittedAt = new Date();
+    await payin.save();
+
+    return res.status(200).json({
+      success: true,
+      msg: 'Transaction hash submitted',
+      payin: {
+        payinId: payin.payinId,
+        txHash: payin.txHash,
+        network: payin.network,
+        status: payin.status,
+        txSubmittedAt: payin.txSubmittedAt,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: 'failed', msg: 'Failed to submit transaction hash' });
+  }
+};
