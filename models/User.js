@@ -34,6 +34,10 @@ const userSchema = new mongoose.Schema({
     enum: ['active', 'ban', 'suspend'],
     default: 'active',
     index: true
+  },
+  remark: {
+    type: String,
+    default: null,
   }
 }, { timestamps: true });
 

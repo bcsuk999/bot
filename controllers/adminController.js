@@ -34,10 +34,14 @@ exports.login = async (req, res) => {
 exports.updateUserStatus = async (req, res) => {
   try {
     const { userid } = req.params;
-    const { status } = req.body;
+    const { status, remark } = req.body;
     
     if (!['active', 'ban', 'suspend'].includes(status)) {
       return res.status(400).json({ success: 'failed', msg: 'Invalid status value' });
+    }
+
+    if (!remark || !String(remark).trim()) {
+      return res.status(400).json({ success: 'failed', msg: 'remark is required (e.g. reason for status change)' });
     }
 
     const user = await User.findOne({ userid: parseInt(userid) });
@@ -46,9 +50,10 @@ exports.updateUserStatus = async (req, res) => {
     }
 
     user.status = status;
+    user.remark = String(remark).trim();
     await user.save();
     
-    res.json({ success: true, msg: 'User status updated successfully', user: { id: user._id, mobile: user.mobile, status: user.status } });
+    res.json({ success: true, msg: 'User status updated successfully', user: { id: user._id, mobile: user.mobile, status: user.status, remark: user.remark } });
   } catch (err) {
     res.status(500).json({ success: 'failed', msg: 'Failed to update user status' });
   }
@@ -100,9 +105,11 @@ exports.listUsers = async (req, res) => {
     let result = users.map((u) => ({
       uid: u.userid,
       mobile: u.mobile,
+      registerDate: u.createdAt,
       balance: statMap[u._id.toString()] ? statMap[u._id.toString()].balance : 0,
       totalDeposit: statMap[u._id.toString()] ? statMap[u._id.toString()].totalDeposit : 0,
       status: u.status,
+      remark: u.remark || null,
     }));
 
     if (sortBalance === 'asc') result.sort((a, b) => a.balance - b.balance);

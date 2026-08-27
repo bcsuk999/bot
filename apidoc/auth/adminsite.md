@@ -48,7 +48,8 @@ Local: http://localhost:5000
 - **Request Body:**
   ```json
   {
-    "status": "string (required: active|ban|suspend)"
+    "status": "string (required: active|ban|suspend)",
+    "remark": "string (required: reason for status change, e.g. 'Violated terms of service')"
   }
   ```
 - **Response:**
@@ -59,13 +60,15 @@ Local: http://localhost:5000
     "user": {
       "id": "user_id",
       "mobile": "mobile_number",
-      "status": "updated_status"
+      "status": "updated_status",
+      "remark": "Violated terms of service"
     }
   }
   ```
 - **Status:** 200 OK
 - **Errors:**
   - 400: `{ "success": "failed", "msg": "Invalid status value" }`
+  - 400: `{ "success": "failed", "msg": "remark is required (e.g. reason for status change)" }`
   - 404: `{ "success": "failed", "msg": "User not found" }`
   - 500: `{ "success": "failed", "msg": "Failed to update user status" }`
 
@@ -104,9 +107,11 @@ Local: http://localhost:5000
       {
         "uid": 3056579,
         "mobile": "9876543210",
+        "registerDate": "2026-05-13T00:00:00.000Z",
         "balance": 13440,
         "totalDeposit": 13440,
-        "status": "active"
+        "status": "active",
+        "remark": null
       }
     ]
   }
