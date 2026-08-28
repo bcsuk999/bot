@@ -65,7 +65,11 @@ Local: http://localhost:5000
 - **Errors:**
   - 404: `{ "success": "failed", "msg": "User not found" }`
   - 400: `{ "success": "failed", "msg": "Invalid credentials" }`
+  - 403: `{ "success": "failed", "msg": "Account is ban. Please contact support." }`
+  - 403: `{ "success": "failed", "msg": "Account is suspend. Please contact support." }`
   - 500: `{ "success": "failed", "msg": "Failed to login" }`
+
+> **Note:** Banned/suspended users cannot login and are blocked from all protected endpoints (`auth`/`optionalAuth` return `403 Access denied: User is <status>`).
 
 ## User Model Fields
 

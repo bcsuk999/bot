@@ -136,6 +136,7 @@ exports.createPayin = async (req, res) => {
 
     return res.status(201).json({
       success: true,
+      payinId: payin.payinId,
       address: payin.address,
       currency: payin.currency,
       amount: parseFloat(payin.amount.toString()),

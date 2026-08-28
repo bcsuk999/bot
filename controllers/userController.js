@@ -96,6 +96,10 @@ exports.login = async (req, res) => {
       return res.status(404).json({ success: 'failed', msg: 'User not found' });
     }
 
+    if (user.status !== 'active') {
+      return res.status(403).json({ success: 'failed', msg: `Account is ${user.status}. Please contact support.` });
+    }
+
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ success: 'failed', msg: 'Invalid credentials' });
