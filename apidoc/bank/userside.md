@@ -66,13 +66,18 @@ If missing/invalid → `401 { "success": "failed", "msg": "Unauthorized: ..." }`
   ```
 - **Query Params (optional):**
   - `status`: `enable` | `disable`
-  - Example: `GET /api/user/banklist?status=enable`
+  - `page`: number (default 1)
+  - `limit`: number (default 20, max 100)
+  - Example: `GET /api/user/banklist?status=enable&page=1&limit=20`
 - **Response Success (200):**
   ```json
   {
     "success": true,
     "msg": "Banks fetched",
     "count": 2,
+    "page": 1,
+    "limit": 20,
+    "totalPages": 1,
     "banks": [
       {
         "bankName": "SBI",
@@ -80,7 +85,8 @@ If missing/invalid → `401 { "success": "failed", "msg": "Unauthorized: ..." }`
         "accountNumber": "123456789012",
         "ifsc": "SBIN0001234",
         "status": "enable",
-        "createdAt": "..."
+        "createdAt": "...",
+        "updatedAt": "..."
       }
     ]
   }
@@ -143,7 +149,8 @@ If missing/invalid → `401 { "success": "failed", "msg": "Unauthorized: ..." }`
 | `accountNumber` | String | Required, **unique + indexed** globally |
 | `ifsc` | String | Required, uppercase, format `^[A-Z]{4}0[A-Z0-9]{6}$` |
 | `status` | String | `enable` \| `disable` (default `enable`), indexed |
+| `remark` | String | Notes (e.g. reason for status change), nullable |
 | `createdAt` | Date | Auto |
 | `updatedAt` | Date | Auto |
 
-**Indexes:** `accountNumber unique`, `bankName`, `user`, `userid`, `status`, `user+status`, `user+createdAt`
+**Indexes:** `accountNumber unique`, `bankName`, `user`, `userid`, `status`, `user+status+createdAt`, `user+createdAt`
