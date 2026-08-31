@@ -13,12 +13,6 @@ exports.addBank = async (req, res) => {
       return res.status(400).json({ success: 'failed', msg: 'Invalid IFSC format' });
     }
 
-    // Check duplicate accountNumber globally (unique index)
-    const existingAccount = await Bank.findOne({ accountNumber: accountNumber.trim() }).lean();
-    if (existingAccount) {
-      return res.status(422).json({ success: 'failed', msg: 'Account number already exists' });
-    }
-
     const bank = new Bank({
       user: req.user.userId,
       userid: req.user.userid,
@@ -56,13 +50,21 @@ exports.addBank = async (req, res) => {
 
 exports.getBanks = async (req, res) => {
   try {
-    const { status } = req.query;
+    const { status, page = 1, limit = 20 } = req.query;
     const filter = { user: req.user.userId };
     if (status && ['enable', 'disable'].includes(status)) {
       filter.status = status;
     }
 
-    const banks = await Bank.find(filter).sort({ createdAt: -1 }).lean();
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+    const skip = (pageNum - 1) * limitNum;
+
+    const [banks, count] = await Promise.all([
+      Bank.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean(),
+      Bank.countDocuments(filter),
+    ]);
+
     const cleaned = banks.map((b) => ({
       bankName: b.bankName,
       holderName: b.holderName,
@@ -73,7 +75,7 @@ exports.getBanks = async (req, res) => {
       updatedAt: b.updatedAt,
     }));
 
-    res.json({ success: true, msg: 'Banks fetched', count: cleaned.length, banks: cleaned });
+    res.json({ success: true, msg: 'Banks fetched', count, page: pageNum, limit: limitNum, totalPages: Math.ceil(count / limitNum), banks: cleaned });
   } catch (err) {
     res.status(500).json({ success: 'failed', msg: 'Failed to fetch banks' });
   }
