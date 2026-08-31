@@ -176,7 +176,7 @@ exports.getPayinList = async (req, res) => {
       payinId: p.payinId,
       currency: p.currency,
       amount: toNum(p.amount),
-      receivedAmount: p.detectedAmount != null ? toNum(p.detectedAmount) : null,
+      receivedAmount: p.creditedAmount != null ? toNum(p.creditedAmount) : null,
       status: p.status,
       transactionType: p.transactionType,
       remark: p.remark,
