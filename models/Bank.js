@@ -43,8 +43,8 @@ const bankSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-// Compound / query-optimized indexes (field-level indexes already cover single fields)
-bankSchema.index({ user: 1, status: 1 });
+// Compound / query-optimized indexes
+bankSchema.index({ user: 1, status: 1, createdAt: -1 });
 bankSchema.index({ user: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Bank', bankSchema);

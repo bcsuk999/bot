@@ -61,21 +61,15 @@ exports.getBanks = async (req, res) => {
     const skip = (pageNum - 1) * limitNum;
 
     const [banks, count] = await Promise.all([
-      Bank.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean(),
+      Bank.find(filter, 'bankName holderName accountNumber ifsc status createdAt updatedAt')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
       Bank.countDocuments(filter),
     ]);
 
-    const cleaned = banks.map((b) => ({
-      bankName: b.bankName,
-      holderName: b.holderName,
-      accountNumber: b.accountNumber,
-      ifsc: b.ifsc,
-      status: b.status,
-      createdAt: b.createdAt,
-      updatedAt: b.updatedAt,
-    }));
-
-    res.json({ success: true, msg: 'Banks fetched', count, page: pageNum, limit: limitNum, totalPages: Math.ceil(count / limitNum), banks: cleaned });
+    res.json({ success: true, msg: 'Banks fetched', count, page: pageNum, limit: limitNum, totalPages: Math.ceil(count / limitNum), banks });
   } catch (err) {
     res.status(500).json({ success: 'failed', msg: 'Failed to fetch banks' });
   }
@@ -93,14 +87,15 @@ exports.updateBankStatus = async (req, res) => {
       return res.status(400).json({ success: 'failed', msg: 'accountNumber is required' });
     }
 
-    const bank = await Bank.findOne({ accountNumber: accountNumber.trim(), user: req.user.userId });
+    const bank = await Bank.findOneAndUpdate(
+      { accountNumber: accountNumber.trim(), user: req.user.userId },
+      { status },
+      { new: true }
+    ).select('bankName holderName accountNumber ifsc status createdAt updatedAt');
 
     if (!bank) {
       return res.status(404).json({ success: 'failed', msg: 'Bank not found' });
     }
-
-    bank.status = status;
-    await bank.save();
 
     res.json({ success: true, msg: 'Bank status updated successfully', bank });
   } catch (err) {
