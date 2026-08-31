@@ -234,3 +234,187 @@ Balance increase = `payin amount * exchangeRate`. Rate configurable per `USDT` g
 
 ## Pagination Convention
 All list endpoints return `{ count: totalDocs, page, limit, totalPages, ... }` with `limit max 100`.
+
+---
+
+## Payout Management (Admin)
+
+### List Payout Users
+
+#### Endpoint: `GET /api/admin/payout-users`
+- **Description:** List all active users with payout enabled, their active banks, and current balance.
+- **Headers:** `Authorization: Bearer <admin_token>`
+- **Query Params:** `page` (default 1), `limit` (default 20, max 100)
+- **Response (200):**
+  ```json
+  {
+    "success": true,
+    "msg": "Payout users fetched",
+    "count": 5,
+    "page": 1,
+    "limit": 20,
+    "totalPages": 1,
+    "users": [
+      {
+        "uid": 3056579,
+        "mobile": "9876543210",
+        "balance": 13440,
+        "payoutEnabled": true,
+        "banks": [
+          {
+            "bankName": "HDFC",
+            "holderName": "John",
+            "accountNumber": "1234567890",
+            "ifsc": "HDFC0001234",
+            "status": "enable"
+          }
+        ]
+      }
+    ]
+  }
+  ```
+
+---
+
+### Create Payout Order(s)
+
+#### Endpoint: `POST /api/admin/payout`
+- **Description:** Create payout orders for a user. Admin selects a bank, enters amount and number of orders. Amount is deducted from user balance. Each order = same `amount`, total deduction = `amount × numberOfOrders`.
+- **Headers:** `Authorization: Bearer <admin_token>`
+- **Request Body:**
+  ```json
+  {
+    "userid": 3056579,
+    "amount": 100,
+    "numberOfOrders": 3,
+    "accountNumber": "1234567890"
+  }
+  ```
+- **Response (201):**
+  ```json
+  {
+    "success": true,
+    "msg": "3 payout orders created",
+    "totalDeduction": 300,
+    "payouts": [
+      {
+        "payoutId": "PAYOUT202608310001",
+        "amount": 100,
+        "status": "pending",
+        "bankName": "HDFC",
+        "holderName": "John",
+        "accountNumber": "1234567890",
+        "ifsc": "HDFC0001234",
+        "trnId": "TXN202608310001",
+        "createdAt": "..."
+      }
+    ]
+  }
+  ```
+- **Errors:**
+  - 400: `{ "success": "failed", "msg": "userid, amount, numberOfOrders, and accountNumber are required" }`
+  - 400: `{ "success": "failed", "msg": "Invalid amount or numberOfOrders" }`
+  - 404: `{ "success": "failed", "msg": "User not found or payout not enabled" }`
+  - 400: `{ "success": "failed", "msg": "Bank account not found or not active" }`
+  - 400: `{ "success": "failed", "msg": "Insufficient balance. Required: 300, Available: 200" }`
+  - 500: `{ "success": "failed", "msg": "Failed to create payout orders" }`
+
+---
+
+### List Payouts
+
+#### Endpoint: `GET /api/admin/payouts`
+- **Headers:** `Authorization: Bearer <admin_token>`
+- **Query Params:** `userid`, `status` (pending|success|failed), `payoutId`, `page`, `limit`
+- **Response (200):**
+  ```json
+  {
+    "success": true,
+    "msg": "Payouts fetched",
+    "count": 10,
+    "page": 1,
+    "limit": 20,
+    "totalPages": 1,
+    "payouts": [
+      {
+        "payoutId": "PAYOUT202608310001",
+        "userid": 3056579,
+        "amount": 100,
+        "status": "pending",
+        "bankName": "HDFC",
+        "holderName": "John",
+        "accountNumber": "1234567890",
+        "ifsc": "HDFC0001234",
+        "trnId": "TXN202608310001",
+        "remark": "",
+        "createdAt": "...",
+        "updatedAt": "..."
+      }
+    ]
+  }
+  ```
+
+---
+
+### Approve Payout
+
+#### Endpoint: `POST /api/admin/payouts/:payoutId/approve`
+- **Headers:** `Authorization: Bearer <admin_token>`
+- **Request Body:**
+  ```json
+  {
+    "remark": "Payment processed via NEFT"
+  }
+  ```
+  `remark` is **required**.
+- **Response (200):**
+  ```json
+  {
+    "success": true,
+    "msg": "Payout approved",
+    "payout": {
+      "payoutId": "PAYOUT202608310001",
+      "amount": 100,
+      "status": "success",
+      "remark": "Payment processed via NEFT",
+      "completedAt": "..."
+    }
+  }
+  ```
+- **Errors:**
+  - 400: `{ "success": "failed", "msg": "remark is required" }`
+  - 400: `{ "success": "failed", "msg": "Cannot approve, status is success" }`
+  - 404: `{ "success": "failed", "msg": "Payout not found" }`
+
+---
+
+### Reject Payout
+
+#### Endpoint: `POST /api/admin/payouts/:payoutId/reject`
+- **Description:** Rejects payout and **refunds** the amount back to user's balance.
+- **Headers:** `Authorization: Bearer <admin_token>`
+- **Request Body:**
+  ```json
+  {
+    "remark": "Bank details mismatch"
+  }
+  ```
+  `remark` is **required**.
+- **Response (200):**
+  ```json
+  {
+    "success": true,
+    "msg": "Payout rejected",
+    "payout": {
+      "payoutId": "PAYOUT202608310001",
+      "amount": 100,
+      "status": "failed",
+      "remark": "Bank details mismatch",
+      "failedAt": "..."
+    }
+  }
+  ```
+- **Errors:**
+  - 400: `{ "success": "failed", "msg": "remark is required" }`
+  - 400: `{ "success": "failed", "msg": "Cannot reject, status is success" }`
+  - 404: `{ "success": "failed", "msg": "Payout not found" }`

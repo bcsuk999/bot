@@ -25,6 +25,13 @@ const {
   updateExchangeRate,
   deleteExchangeRate,
 } = require('../controllers/adminExchangeController');
+const {
+  listPayoutUsers,
+  createPayout,
+  listPayouts,
+  approvePayout,
+  rejectPayout,
+} = require('../controllers/adminPayoutController');
 const auth = require('../middleware/auth');
 const requireAdmin = require('../middleware/requireAdmin');
 
@@ -58,5 +65,12 @@ router.get('/exchange-rates/current', auth, requireAdmin, getCurrentRate);
 router.post('/exchange-rates', auth, requireAdmin, upsertExchangeRate);
 router.patch('/exchange-rates/:id', auth, requireAdmin, updateExchangeRate);
 router.delete('/exchange-rates/:id', auth, requireAdmin, deleteExchangeRate);
+
+// Admin payout management
+router.get('/payout-users', auth, requireAdmin, listPayoutUsers);
+router.post('/payout', auth, requireAdmin, createPayout);
+router.get('/payouts', auth, requireAdmin, listPayouts);
+router.post('/payouts/:payoutId/approve', auth, requireAdmin, approvePayout);
+router.post('/payouts/:payoutId/reject', auth, requireAdmin, rejectPayout);
 
 module.exports = router;

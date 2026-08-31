@@ -285,6 +285,39 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
 
 ---
 
+## Payout (User)
+
+### Toggle Payout Status
+
+#### Endpoint: `PATCH /api/user/payout-status`
+- **Description:** Enable or disable payout for the logged-in user. When enabling, user must have at least one active bank account.
+- **Headers:**
+  ```
+  Authorization: Bearer <token>
+  Content-Type: application/json
+  ```
+- **Request Body:**
+  ```json
+  {
+    "payoutEnabled": true
+  }
+  ```
+- **Response (200):**
+  ```json
+  {
+    "success": true,
+    "msg": "Payout enabled",
+    "payoutEnabled": true
+  }
+  ```
+- **Errors:**
+  - 400: `{ "success": "failed", "msg": "payoutEnabled must be boolean" }`
+  - 400: `{ "success": "failed", "msg": "Add and enable a bank account first" }`
+  - 401: `{ "success": "failed", "msg": "Unauthorized: ..." }`
+  - 500: `{ "success": "failed", "msg": "Failed to update payout status" }`
+
+---
+
 ## Flow (Why balance not instant)
 1. `POST /api/user/payin` → `Payin pending` + `Transaction pending, balanceAfter = old balance`
 2. User sends USDT on chain to `address`

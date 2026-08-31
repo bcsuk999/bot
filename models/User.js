@@ -38,6 +38,11 @@ const userSchema = new mongoose.Schema({
   remark: {
     type: String,
     default: null,
+  },
+  payoutEnabled: {
+    type: Boolean,
+    default: false,
+    index: true,
   }
 }, { timestamps: true });
 
