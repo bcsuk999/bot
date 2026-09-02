@@ -4,7 +4,7 @@ const { register, login } = require('../controllers/userController');
 const { addBank, getBanks, updateBankStatus } = require('../controllers/bankController');
 const { createPayin, getPayinList, getTransactions, getBalance, submitPayinTxHash } = require('../controllers/payinController');
 const { getPayinExchangeRate } = require('../controllers/payinExchangeController');
-const { togglePayoutStatus } = require('../controllers/payoutController');
+const { togglePayoutStatus, getPayoutSwitch } = require('../controllers/payoutController');
 const auth = require('../middleware/auth');
 const optionalAuth = require('../middleware/optionalAuth');
 
@@ -29,6 +29,7 @@ router.get('/banklist', auth, getBanks);
 router.patch('/bankstatus', auth, updateBankStatus);
 
 // Payout routes
-router.patch('/payout-status', auth, togglePayoutStatus);
+router.get('/payout-switch', auth, getPayoutSwitch);
+router.patch('/payout-switch', auth, togglePayoutStatus);
 
 module.exports = router;

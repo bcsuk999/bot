@@ -287,9 +287,24 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
 
 ## Payout (User)
 
-### Toggle Payout Status
+### Get Payout Switch Status
 
-#### Endpoint: `PATCH /api/user/payout-status`
+#### Endpoint: `GET /api/user/payout-switch`
+- **Description:** Get current payout switch status for the logged-in user.
+- **Headers:** `Authorization: Bearer <token>`
+- **Response (200):**
+  ```json
+  {
+    "success": true,
+    "withdrawal": true
+  }
+  ```
+
+---
+
+### Toggle Payout Switch
+
+#### Endpoint: `PATCH /api/user/payout-switch`
 - **Description:** Enable or disable payout for the logged-in user. When enabling, user must have at least one active bank account.
 - **Headers:**
   ```
@@ -299,7 +314,7 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
 - **Request Body:**
   ```json
   {
-    "payoutEnabled": true
+    "withdrawal": true
   }
   ```
 - **Response (200):**
@@ -307,14 +322,14 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
   {
     "success": true,
     "msg": "Payout enabled",
-    "payoutEnabled": true
+    "withdrawal": true
   }
   ```
 - **Errors:**
-  - 400: `{ "success": "failed", "msg": "payoutEnabled must be boolean" }`
+  - 400: `{ "success": "failed", "msg": "withdrawal must be boolean" }`
   - 400: `{ "success": "failed", "msg": "Add and enable a bank account first" }`
   - 401: `{ "success": "failed", "msg": "Unauthorized: ..." }`
-  - 500: `{ "success": "failed", "msg": "Failed to update payout status" }`
+  - 500: `{ "success": "failed", "msg": "Failed to update payout switch" }`
 
 ---
 

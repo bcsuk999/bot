@@ -259,7 +259,7 @@ All list endpoints return `{ count: totalDocs, page, limit, totalPages, ... }` w
         "uid": 3056579,
         "mobile": "9876543210",
         "balance": 13440,
-        "payoutEnabled": true,
+        "withdrawal": true,
         "banks": [
           {
             "bankName": "HDFC",

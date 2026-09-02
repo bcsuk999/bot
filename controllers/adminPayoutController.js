@@ -48,12 +48,12 @@ exports.listPayoutUsers = async (req, res) => {
     const skip = (pageNum - 1) * limitNum;
 
     const [users, count] = await Promise.all([
-      User.find({ payoutEnabled: true, status: 'active', role: 'user' })
+      User.find({ withdrawal: true, status: 'active', role: 'user' })
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limitNum)
         .lean(),
-      User.countDocuments({ payoutEnabled: true, status: 'active', role: 'user' }),
+      User.countDocuments({ withdrawal: true, status: 'active', role: 'user' }),
     ]);
 
     const userIds = users.map((u) => u._id);
@@ -91,7 +91,7 @@ exports.listPayoutUsers = async (req, res) => {
       uid: u.userid,
       mobile: u.mobile,
       balance: balanceMap[u._id.toString()] || 0,
-      payoutEnabled: u.payoutEnabled,
+      withdrawal: u.withdrawal,
       banks: bankMap[u._id.toString()] || [],
     }));
 
@@ -130,7 +130,7 @@ exports.createPayout = async (req, res) => {
     }
 
     const user = await User.findOne({ userid: parseInt(userid), role: 'user' }).lean();
-    if (!user || !user.payoutEnabled || user.status !== 'active') {
+    if (!user || !user.withdrawal || user.status !== 'active') {
       return res.status(404).json({ success: 'failed', msg: 'User not found or payout not enabled' });
     }
 

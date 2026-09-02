@@ -39,7 +39,7 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: null,
   },
-  payoutEnabled: {
+withdrawal: {
     type: Boolean,
     default: false,
     index: true,
