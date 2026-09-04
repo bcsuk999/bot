@@ -51,12 +51,12 @@ router.patch('/deposit-addresses/:id', auth, requireAdmin, updateDepositAddress)
 router.patch('/deposit-addresses/:id/toggle', auth, requireAdmin, toggleDepositAddress);
 router.delete('/deposit-addresses/:id', auth, requireAdmin, deleteDepositAddress);
 
-// Admin payin / transaction management (by trnId / userid with pagination)
+// Admin payin / transaction management (by payinId / userid with pagination)
 router.get('/payins', auth, requireAdmin, adminListPayins);
 router.get('/transactions', auth, requireAdmin, adminListTransactions);
 router.get('/transactions/:trnId', auth, requireAdmin, adminGetTransactionByTrnId);
-router.post('/transactions/:trnId/approve', auth, requireAdmin, adminApproveTransaction);
-router.post('/transactions/:trnId/reject', auth, requireAdmin, adminRejectTransaction);
+router.post('/payins/:payinId/approve', auth, requireAdmin, adminApproveTransaction);
+router.post('/payins/:payinId/reject', auth, requireAdmin, adminRejectTransaction);
 router.post('/transactions/:trnId/reverse', auth, requireAdmin, adminReverseTransaction);
 
 // Admin exchange rate config (payin amount * rate = credited balance)

@@ -187,7 +187,7 @@ exports.createPayout = async (req, res) => {
         note: 'payout',
         remark: '',
         balanceAfter: runningBalance,
-        status: 'pending',
+        status: 'success',
         referenceId: payoutId,
       });
 
@@ -287,15 +287,6 @@ exports.approvePayout = async (req, res) => {
     payout.approvedBy = req.user.userId;
     await payout.save();
 
-    if (payout.trnId) {
-      const txn = await Transaction.findOne({ trnId: payout.trnId });
-      if (txn) {
-        txn.status = 'success';
-        txn.remark = String(remark).trim();
-        await txn.save();
-      }
-    }
-
     return res.json({
       success: true,
       msg: 'Payout approved',
@@ -304,6 +295,7 @@ exports.approvePayout = async (req, res) => {
         amount: parseFloat(payout.amount.toString()),
         status: payout.status,
         remark: payout.remark,
+        trnId: payout.trnId,
         completedAt: payout.completedAt,
       },
     });
@@ -338,11 +330,11 @@ exports.rejectPayout = async (req, res) => {
     await payout.save();
 
     if (payout.trnId) {
-      const txn = await Transaction.findOne({ trnId: payout.trnId });
-      if (txn) {
-        txn.status = 'failed';
-        txn.remark = String(remark).trim();
-        await txn.save();
+      const originalTxn = await Transaction.findOne({ trnId: payout.trnId });
+      if (originalTxn) {
+        originalTxn.status = 'reversed';
+        originalTxn.remark = String(remark).trim();
+        await originalTxn.save();
       }
     }
 

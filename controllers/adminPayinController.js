@@ -1,7 +1,6 @@
 const Payin = require('../models/Payin');
 const Transaction = require('../models/Transaction');
 const Counter = require('../models/Counter');
-const User = require('../models/User');
 const { getRateFor } = require('./adminExchangeController');
 
 function formatTrnId(seq) {
@@ -162,121 +161,111 @@ exports.adminGetTransactionByTrnId = async (req, res) => {
   }
 };
 
-// Approve pending -> success (credit balance) by trnId
-// balance increase = amount * exchangeRate (admin configured rate)
+// Approve payin -> create success credit transaction (balance increase = amount * exchangeRate)
 exports.adminApproveTransaction = async (req, res) => {
   try {
-    const { trnId } = req.params;
+    const { payinId } = req.params;
     const { txHash, remark, exchangeRate: overrideRate } = req.body;
-    const txn = await Transaction.findOne({ trnId });
-    if (!txn) return res.status(404).json({ success: 'failed', msg: 'Transaction not found' });
-    if (txn.status !== 'pending') return res.status(400).json({ success: 'failed', msg: `Cannot approve, status is ${txn.status}` });
-    if (txn.type !== 'credit') return res.status(400).json({ success: 'failed', msg: 'Only credit transactions can be approved as payin' });
 
-    // Ensure user exists
-    const user = await User.findById(txn.user).lean();
-    if (!user) return res.status(404).json({ success: 'failed', msg: 'User not found' });
+    const payin = await Payin.findOne({ payinId });
+    if (!payin) return res.status(404).json({ success: 'failed', msg: 'Payin not found' });
+    if (payin.status !== 'pending') return res.status(400).json({ success: 'failed', msg: `Cannot approve, payin status is ${payin.status}` });
 
-    const currentBalance = await getCurrentBalance(txn.user);
-    const amount = parseBalance(txn.amount);
-    // exchange rate factor: use override if provided, else fetch configured rate for currency/network
+    const currentBalance = await getCurrentBalance(payin.user);
+    const amount = parseBalance(payin.amount);
+
     let rate = 1;
     if (overrideRate != null) {
       const pr = Number(overrideRate);
       if (!isFinite(pr) || pr <= 0) return res.status(400).json({ success: 'failed', msg: 'Invalid exchangeRate' });
       rate = pr;
     } else {
-      rate = await getRateFor(txn.currency || 'USDT', txn.network || null);
+      rate = await getRateFor(payin.currency || 'USDT', payin.network || null);
     }
     const creditedAmount = amount * rate;
     const newBalance = currentBalance + creditedAmount;
 
-    txn.status = 'success';
-    txn.balanceAfter = newBalance;
-    txn.exchangeRate = rate;
-    txn.creditedAmount = creditedAmount;
-    if (txHash) txn.txHash = String(txHash).trim();
-    if (remark) txn.remark = String(remark).trim();
-    await txn.save();
+    const seq = await getNextSequence('transactionId');
+    const trnId = formatTrnId(seq);
 
-    // update linked payin if exists
-    if (txn.referenceId) {
-      const payin = await Payin.findOne({ payinId: txn.referenceId });
-      if (payin) {
-        payin.status = 'success';
-        if (txHash) payin.txHash = String(txHash).trim();
-        payin.completedAt = new Date();
-        if (remark) payin.remark = String(remark).trim();
-        payin.detectedAmount = amount;
-        payin.exchangeRate = rate;
-        payin.creditedAmount = creditedAmount;
-        await payin.save();
-      }
-    }
+    const transaction = await Transaction.create({
+      trnId,
+      user: payin.user,
+      userid: payin.userid,
+      amount,
+      type: 'credit',
+      note: 'payin',
+      remark: remark ? String(remark).trim() : `${payin.network} deposit`,
+      balanceAfter: newBalance,
+      status: 'success',
+      referenceId: payin.payinId,
+      network: payin.network,
+      currency: payin.currency,
+      exchangeRate: rate,
+      creditedAmount,
+      txHash: txHash ? String(txHash).trim() : null,
+    });
+
+    payin.status = 'success';
+    if (txHash) payin.txHash = String(txHash).trim();
+    payin.completedAt = new Date();
+    if (remark) payin.remark = String(remark).trim();
+    payin.detectedAmount = amount;
+    payin.exchangeRate = rate;
+    payin.creditedAmount = creditedAmount;
+    await payin.save();
 
     res.json({
       success: true,
-      msg: 'Transaction approved',
+      msg: 'Payin approved',
       transaction: {
-        trnId: txn.trnId,
-        amount: parseFloat(txn.amount.toString()),
-        type: txn.type,
-        note: txn.note,
-        remark: txn.remark,
-        balanceAfter: parseFloat(txn.balanceAfter.toString()),
-        status: txn.status,
-        exchangeRate: txn.exchangeRate != null ? parseFloat(txn.exchangeRate.toString()) : null,
-        creditedAmount: txn.creditedAmount != null ? parseFloat(txn.creditedAmount.toString()) : null,
-        createdAt: txn.createdAt,
-        updatedAt: txn.updatedAt,
+        trnId: transaction.trnId,
+        amount: parseFloat(transaction.amount.toString()),
+        type: transaction.type,
+        note: transaction.note,
+        remark: transaction.remark,
+        balanceAfter: parseFloat(transaction.balanceAfter.toString()),
+        status: transaction.status,
+        exchangeRate: transaction.exchangeRate != null ? parseFloat(transaction.exchangeRate.toString()) : null,
+        creditedAmount: transaction.creditedAmount != null ? parseFloat(transaction.creditedAmount.toString()) : null,
+        createdAt: transaction.createdAt,
+        updatedAt: transaction.updatedAt,
       },
     });
   } catch (err) {
+    console.error('adminApproveTransaction error:', err);
     res.status(500).json({ success: 'failed', msg: 'Failed to approve transaction' });
   }
 };
 
-// Reject pending -> failed
+// Reject payin -> update payin status to failed (no transaction, no balance change)
 exports.adminRejectTransaction = async (req, res) => {
   try {
-    const { trnId } = req.params;
+    const { payinId } = req.params;
     const { remark } = req.body;
-    const txn = await Transaction.findOne({ trnId });
-    if (!txn) return res.status(404).json({ success: 'failed', msg: 'Transaction not found' });
-    if (txn.status !== 'pending') return res.status(400).json({ success: 'failed', msg: `Cannot reject, status is ${txn.status}` });
 
-    txn.status = 'failed';
-    if (remark) txn.remark = String(remark).trim();
-    // balanceAfter stays as old (no credit)
-    await txn.save();
+    const payin = await Payin.findOne({ payinId });
+    if (!payin) return res.status(404).json({ success: 'failed', msg: 'Payin not found' });
+    if (payin.status !== 'pending') return res.status(400).json({ success: 'failed', msg: `Cannot reject, payin status is ${payin.status}` });
 
-    if (txn.referenceId) {
-      const payin = await Payin.findOne({ payinId: txn.referenceId });
-      if (payin) {
-        payin.status = 'failed';
-        payin.failedAt = new Date();
-        if (remark) payin.remark = String(remark).trim();
-        await payin.save();
-      }
-    }
+    payin.status = 'failed';
+    payin.failedAt = new Date();
+    if (remark) payin.remark = String(remark).trim();
+    await payin.save();
 
     res.json({
       success: true,
-      msg: 'Transaction rejected',
-      transaction: {
-        trnId: txn.trnId,
-        amount: parseFloat(txn.amount.toString()),
-        type: txn.type,
-        note: txn.note,
-        remark: txn.remark,
-        balanceAfter: parseFloat(txn.balanceAfter.toString()),
-        status: txn.status,
-        createdAt: txn.createdAt,
-        updatedAt: txn.updatedAt,
+      msg: 'Payin rejected',
+      payin: {
+        payinId: payin.payinId,
+        amount: parseFloat(payin.amount.toString()),
+        status: payin.status,
+        remark: payin.remark,
+        failedAt: payin.failedAt,
       },
     });
   } catch (err) {
-    res.status(500).json({ success: 'failed', msg: 'Failed to reject transaction' });
+    res.status(500).json({ success: 'failed', msg: 'Failed to reject payin' });
   }
 };
 

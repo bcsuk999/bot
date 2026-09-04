@@ -16,7 +16,7 @@ router.post('/login', login);
 // optionalAuth: works without token (public) and with valid Bearer token; invalid token -> 401
 router.get('/payin/exchange', optionalAuth, getPayinExchangeRate);
 
-// Payin - creates pending payin + pending transaction with balanceAfter (no instant credit)
+// Payin - creates pending payin (no transaction until approved)
 router.post('/payin', auth, createPayin);
 router.post('/payin/submit-tx', auth, submitPayinTxHash);
 router.get('/payins', auth, getPayinList);

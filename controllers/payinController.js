@@ -32,12 +32,6 @@ function formatPayinId(seq) {
   return `PAY${d}${String(seq).padStart(4, '0')}`;
 }
 
-function formatTrnId(seq) {
-  const date = new Date();
-  const d = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
-  return `TXN${d}${String(seq).padStart(4, '0')}`;
-}
-
 exports.createPayin = async (req, res) => {
   try {
     // accept both amt/amount and net/network
@@ -73,35 +67,9 @@ exports.createPayin = async (req, res) => {
     const receivedAmount = parsedAmount * exchangeRate;
 
     const payinSeq = await getNextSequence('payinId');
-    const txnSeq = await getNextSequence('transactionId');
     const payinId = formatPayinId(payinSeq);
-    const trnId = formatTrnId(txnSeq);
 
     const requiredConfirmations = REQUIRED_CONFIRMATIONS[network] || 12;
-
-    // get current balanceAfter = last success transaction balanceAfter else 0
-    const lastTxn = await Transaction.findOne({ user: req.user.userId, status: 'success' })
-      .sort({ createdAt: -1 })
-      .lean();
-    let currentBalance = 0;
-    if (lastTxn && lastTxn.balanceAfter != null) {
-      // balanceAfter may be Decimal128
-      const raw = lastTxn.balanceAfter;
-      currentBalance = raw ? parseFloat(raw.toString()) : 0;
-      if (isNaN(currentBalance)) currentBalance = 0;
-    } else {
-      // fallback: sum of all success if no last with balanceAfter (legacy)
-      // but for phase 1, 0 is fine
-      currentBalance = 0;
-      // Try aggregate as backup if lastTxn missing but history exists
-      const agg = await Transaction.aggregate([
-        { $match: { user: req.user.userId, status: 'success' } },
-        { $group: { _id: null, total: { $sum: '$balanceAfter' } } },
-      ]);
-      // not accurate, but we stick to lastTxn method; keep 0 if no success
-    }
-
-    const balanceAfterPending = currentBalance; // pending does NOT increase
 
     const payin = await Payin.create({
       payinId,
@@ -117,21 +85,6 @@ exports.createPayin = async (req, res) => {
       remark: `${currency} ${network} deposit`,
       exchangeRate,
       creditedAmount: receivedAmount,
-    });
-
-    const transaction = await Transaction.create({
-      trnId,
-      user: req.user.userId,
-      userid: req.user.userid,
-      amount: parsedAmount,
-      type: 'credit',
-      note: 'payin',
-      remark: `${network} deposit`,
-      balanceAfter: balanceAfterPending,
-      status: 'pending',
-      referenceId: payin.payinId,
-      network,
-      currency,
     });
 
     return res.status(201).json({
