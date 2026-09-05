@@ -24,6 +24,7 @@ function generateSign(params, secret) {
     .join('&');
 
   const full = signStr + '&key=' + (secret || SECRET);
+  console.log('SimplyPay signStr:', full);
   return crypto.createHash('sha256').update(full, 'utf8').digest('hex');
 }
 
@@ -62,6 +63,8 @@ async function createPaymentOrder({ merOrderNo, amount, returnUrl, notifyUrl, at
     extra: extra || {},
   };
   params.sign = generateSign(params);
+  console.log('SimplyPay createPaymentOrder params:', JSON.stringify(params, null, 2));
+  console.log('SimplyPay SECRET loaded:', SECRET ? SECRET.substring(0, 4) + '...' : 'MISSING');
   return apiCall('/payment/order/create', params);
 }
 
