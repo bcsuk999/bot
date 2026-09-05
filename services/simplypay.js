@@ -11,7 +11,7 @@ function parseExtra(extra) {
 
 function generateSign(params, secret) {
   const keys = Object.keys(params)
-    .filter((k) => k !== 'sign' && params[k] !== null && params[k] !== undefined)
+    .filter((k) => k !== 'sign' && params[k])
     .sort();
 
   const signStr = keys
