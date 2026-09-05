@@ -11,7 +11,7 @@ function parseExtra(extra) {
 
 function generateSign(params, secret) {
   const keys = Object.keys(params)
-    .filter((k) => k !== 'sign' && params[k])
+    .filter((k) => k !== 'sign' && params[k] !== null && params[k] !== undefined)
     .sort();
 
   const signStr = keys
@@ -57,7 +57,7 @@ async function createPaymentOrder({ merOrderNo, amount, returnUrl, notifyUrl, at
     merOrderNo,
     currency: 'INR',
     amount: String(amount),
-    returnUrl: returnUrl || process.env.SIMPLYPAY_RETURN_URL,
+    returnUrl: returnUrl != null ? returnUrl : (process.env.SIMPLYPAY_RETURN_URL || ''),
     notifyUrl: notifyUrl || process.env.SIMPLYPAY_NOTIFY_URL,
     attach: attach || '',
     extra: extra || {},
