@@ -47,11 +47,11 @@ async function apiCall(path, body) {
     body: formBody.toString(),
   });
   const text = await res.text();
-  console.log('SimplyPay apiCall', path, 'status:', res.status);
+  console.log('SimplyPay apiCall', path, 'status:', res.status, 'body:', text);
   try {
     return JSON.parse(text);
   } catch (e) {
-    console.error('SimplyPay API non-JSON response from', url, 'status:', res.status, 'body:', text.substring(0, 500));
+    console.error('SimplyPay API non-JSON response from', url, 'status:', res.status, 'body:', text);
     return { code: -1, msg: `API returned non-JSON (status ${res.status})` };
   }
 }
