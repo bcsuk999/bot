@@ -33,12 +33,21 @@ function verifySign(params) {
 
 async function apiCall(path, body) {
   const url = BASE_URL + path;
+  const formBody = new URLSearchParams();
+  for (const [key, val] of Object.entries(body)) {
+    if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
+      formBody.append(key, JSON.stringify(val));
+    } else {
+      formBody.append(key, String(val));
+    }
+  }
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: formBody.toString(),
   });
   const text = await res.text();
+  console.log('SimplyPay apiCall', path, 'status:', res.status);
   try {
     return JSON.parse(text);
   } catch (e) {
