@@ -195,11 +195,6 @@ exports.getBalance = async (req, res) => {
   }
 };
 
-// TX hash validation: 0x followed by 64 hex chars (EVM/TRC20/BEP20) or 64 hex chars
-function isValidTxHash(hash) {
-  return typeof hash === 'string' && /^0x?[a-fA-F0-9]{64}$/.test(hash.trim());
-}
-
 exports.submitPayinTxHash = async (req, res) => {
   try {
     const { payinId, txHash } = req.body;
@@ -209,9 +204,6 @@ exports.submitPayinTxHash = async (req, res) => {
     }
 
     const cleanHash = String(txHash).trim();
-    if (!isValidTxHash(cleanHash)) {
-      return res.status(400).json({ success: 'failed', msg: 'Invalid transaction hash format' });
-    }
 
     const payin = await Payin.findOne({ payinId, user: req.user.userId });
     if (!payin) {
