@@ -15,11 +15,11 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
 
 ## Deposit Methods Overview
 
-| Method | Endpoint | Currency | Network | Approval |
-|--------|----------|----------|---------|----------|
-| USDT TRC20 | `POST /api/user/payin` | USDT | TRC20 | Admin manual |
-| USDT BEP20 | `POST /api/user/payin` | USDT | BEP20 | Admin manual |
-| INR SimplyPay | `POST /api/user/simplypay/deposit` | INR | SPAY | Auto (webhook) |
+| Method | Endpoint | Currency | Network | Approval | Bonus |
+|--------|----------|----------|---------|----------|-------|
+| USDT TRC20 | `POST /api/user/payin` | USDT | TRC20 | Admin manual | No |
+| USDT BEP20 | `POST /api/user/payin` | USDT | BEP20 | Admin manual | No |
+| INR SimplyPay | `POST /api/user/simplypay/deposit` | INR | SPAY | Auto (webhook) | Yes |
 
 ---
 
@@ -112,7 +112,7 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
 
 #### Validation:
 - `payinId` required
-- `txHash` required, must be `0x` + 64 hex chars (EVM/TRC20/BEP20 format)
+- `txHash` required — accepts any string (no format validation)
 - Payin must belong to the user and exist
 - Payin `status` must be `pending`
 - `txHash` must not already be set (submit once only)
@@ -134,7 +134,6 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
 
 #### Errors:
 - 400: `{ "success": "failed", "msg": "payinId and txHash are required" }`
-- 400: `{ "success": "failed", "msg": "Invalid transaction hash format" }`
 - 400: `{ "success": "failed", "msg": "Cannot submit txHash for payin with status success" }`
 - 404: `{ "success": "failed", "msg": "Payin not found" }`
 - 409: `{ "success": "failed", "msg": "Transaction hash already submitted", "txHash": "0x..." }`
@@ -148,7 +147,7 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
 ### Create INR Deposit
 
 #### Endpoint: `POST /api/user/simplypay/deposit`
-- **Description:** Create an INR deposit via SimplyPay gateway. Returns a payment link for the user to complete payment. Balance is credited automatically on webhook callback (no admin approval needed).
+- **Description:** Create an INR deposit via SimplyPay gateway. Returns a payment link for the user to complete payment. Balance is credited automatically on webhook callback (no admin approval needed). Bonus is applied automatically based on admin config.
 - **Headers:**
   ```
   Authorization: Bearer <token>
@@ -176,17 +175,21 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
   "success": true,
   "payinId": "FPAY202609050001",
   "amount": 100,
+  "bonus": 11.2,
+  "receivedAmount": 111.2,
   "currency": "INR",
   "paymentLink": "https://...",
   "deepLink": "upi://...",
   "orderNo": "20250905123456789"
 }
 ```
+- `bonus` = calculated bonus (percentage + flat, from admin config)
+- `receivedAmount` = `amount + bonus`
 
 #### Flow:
-1. User calls this endpoint → gets `paymentLink`
+1. User calls this endpoint → gets `paymentLink` + `bonus` + `receivedAmount`
 2. User opens `paymentLink` → completes payment
-3. SimplyPay calls `POST /webhook/simplypay/payin` → auto-credits balance
+3. SimplyPay calls `POST /webhook/simplypay/payin` → auto-credits balance with bonus
 
 #### Errors:
 - 400: `{ "success": "failed", "msg": "amount is required" }`
@@ -197,7 +200,32 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
 
 ---
 
-## 3. List Payins (All Methods)
+## 3. Get Bonus Config
+
+#### Endpoint: `GET /api/user/bonus-config`
+- **Description:** View current INR bonus rates (public — works with or without token).
+- **Headers:** `Authorization: Bearer <token>` (optional)
+
+#### Response Success (200):
+```json
+{
+  "success": true,
+  "config": {
+    "bonusPercentage": 5.2,
+    "bonusFlat": 6,
+    "isActive": true,
+    "updatedAt": "2026-09-05T10:00:00.000Z"
+  }
+}
+```
+- `bonusPercentage`: percentage bonus (e.g. 5.2 means 5.2%)
+- `bonusFlat`: flat bonus in INR (e.g. 6 RS)
+- `isActive`: whether bonus is currently enabled
+- Total bonus = `(amount × bonusPercentage / 100) + bonusFlat`
+
+---
+
+## 4. List Payins (All Methods)
 
 #### Endpoint: `GET /api/user/payins?page=1&limit=20&status=pending&network=BEP20`
 - **Description:** Get payins for logged-in user with pagination, newest first. Shows both USDT and INR payins.
@@ -206,7 +234,7 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
   - `page` (default 1)
   - `limit` (default 20, max 100)
   - `status` — `pending` | `success` | `failed` | `reversed` (optional)
-  - `network` — `TRC20` | `BEP20` | `INR` | `SPAY` (optional)
+  - `network` — `TRC20` | `BEP20` | `SPAY` (optional)
 
 #### Response Success (200):
 ```json
@@ -221,7 +249,8 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
       "payinId": "FPAY202609050001",
       "currency": "INR",
       "amount": 100,
-      "receivedAmount": 100,
+      "bonusAmount": 11.2,
+      "receivedAmount": 111.2,
       "status": "success",
       "transactionType": "payin",
       "remark": "INR deposit via SimplyPay",
@@ -232,6 +261,7 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
       "payinId": "PAY202609050001",
       "currency": "USDT",
       "amount": 120,
+      "bonusAmount": 0,
       "receivedAmount": 13440,
       "status": "pending",
       "transactionType": "payin",
@@ -249,7 +279,7 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
 
 ---
 
-## 4. List Transactions
+## 5. List Transactions
 
 #### Endpoint: `GET /api/user/transactions?page=1&limit=20&status=success&type=credit`
 - **Description:** Ledger history for logged-in user with pagination, newest first. Every transaction contains `balanceAfter` (wallet after that row). Shows all methods (USDT + INR).
@@ -275,14 +305,14 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
     {
       "trnId": "TXN202609050002",
       "currency": "INR",
-      "amount": 100,
+      "amount": 111.2,
       "type": "credit",
       "note": "payin",
-      "remark": "INR deposit via SimplyPay",
-      "balanceAfter": 100,
+      "remark": "INR deposit via SimplyPay + 11.2 bonus",
+      "balanceAfter": 111.2,
       "status": "success",
       "exchangeRate": 1,
-      "creditedAmount": 100,
+      "creditedAmount": 111.2,
       "createdAt": "2026-09-05T10:05:00.000Z",
       "updatedAt": "2026-09-05T10:05:00.000Z"
     },
@@ -309,12 +339,12 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
 |-------|------|-------------|
 | `trnId` | String | Unique `TXNYYYYMMDD####`, indexed |
 | `currency` | String | `USDT` or `INR` |
-| `amount` | Number (Decimal128) | Requested amount |
+| `amount` | Number (Decimal128) | Credited amount (includes bonus for INR) |
 | `creditedAmount` | Number (Decimal128) | `amount * exchangeRate` |
 | `exchangeRate` | Number (Decimal128) | Rate applied (1 for INR, 112 for USDT) |
 | `type` | String | `credit` \| `debit` |
 | `note` | String | `payin` \| `payout` \| `reversal` |
-| `remark` | String | e.g. `BEP20 deposit`, `INR deposit via SimplyPay` |
+| `remark` | String | e.g. `BEP20 deposit`, `INR deposit via SimplyPay + 11.2 bonus` |
 | `balanceAfter` | Number (Decimal128) | Wallet after this transaction |
 | `status` | String | `pending` \| `success` \| `failed` \| `reversed` |
 | `network` | String | `TRC20` \| `BEP20` \| `INR` |
@@ -327,7 +357,7 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
 
 ---
 
-## 5. Get Balance
+## 6. Get Balance
 
 #### Endpoint: `GET /api/user/balance`
 - **Description:** Current wallet balance = `balanceAfter` of last `status=success` transaction, else `0`. Pending payins do not count. Works for both USDT and INR deposits.
@@ -347,7 +377,7 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
 
 ---
 
-## 6. Get Exchange Rate
+## 7. Get Exchange Rate
 
 #### Endpoint: `GET /api/user/payin/exchange`
 - **Description:** Fetch current exchange rate. Single rate, no currency/network params. Used for USDT deposits.
@@ -372,12 +402,12 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
 5. GET /api/user/balance → reflects credited amount
 ```
 
-### INR (SimplyPay) — Auto-Credited
+### INR (SimplyPay) — Auto-Credited with Bonus
 ```
-1. POST /api/user/simplypay/deposit → Payin pending + returns paymentLink
+1. POST /api/user/simplypay/deposit → Payin pending + returns paymentLink + bonus + receivedAmount
 2. User opens paymentLink → completes payment
 3. SimplyPay webhook → POST /webhook/simplypay/payin
-   → Auto-creates Transaction (credit, success, balanceAfter = old + amount)
+   → Auto-creates Transaction (credit, success, balanceAfter = old + amount + bonus)
 4. GET /api/user/balance → reflects credited amount (no admin needed)
 ```
 
@@ -397,11 +427,13 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
 | `address` | String | Deposit address (USDT only, null for INR) |
 | `status` | String | `pending` \| `success` \| `failed` \| `reversed` |
 | `transactionType` | String | `payin` |
-| `txHash` | String | Blockchain hash (USDT only) |
+| `txHash` | String | Blockchain hash (USDT only, any string accepted) |
 | `confirmations` / `requiredConfirmations` | Number | TRC20: 20, BEP20: 15, INR: 0 |
 | `remark` | String | Description |
 | `exchangeRate` | Decimal128 | Rate at creation (1 for INR, 112 for USDT) |
 | `creditedAmount` | Decimal128 | `amount * exchangeRate` |
+| `bonusAmount` | Decimal128 | Bonus applied (INR only, 0 for USDT) |
+| `receivedAmount` | Decimal128 | `amount + bonusAmount` (INR) or `amount * exchangeRate` (USDT) |
 | `createdAt` / `updatedAt` | Date | Auto |
 
 ### Transaction Model Fields
@@ -410,7 +442,7 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
 | `trnId` | String | Unique `TXNYYYYMMDD####`, indexed |
 | `user` | ObjectId | Ref User `_id`, indexed |
 | `userid` | Number | Denormalized `User.userid`, indexed |
-| `amount` | Decimal128 | Amount |
+| `amount` | Decimal128 | Amount (includes bonus for INR) |
 | `type` | String | `credit` \| `debit` |
 | `note` | String | `payin` \| `payout` \| `reversal` |
 | `remark` | String | Description |

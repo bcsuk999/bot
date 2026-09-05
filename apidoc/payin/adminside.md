@@ -87,7 +87,7 @@ Manage USDT deposit addresses per network. When user calls `POST /api/user/payin
 
 ### List Payins (Admin)
 #### Endpoint: `GET /api/admin/payins`
-- **Description:** All payins with pagination. Filter by `userid` (Number), `status` (`pending`|`success`|`failed`|`reversed`), `network`, `payinId`, or `trnId` (resolves via transaction reference).
+- **Description:** All payins with pagination. Filter by `userid` (Number), `status` (`pending`|`success`|`failed`|`reversed`), `network` (`TRC20`|`BEP20`|`SPAY`), `payinId`, or `trnId` (resolves via transaction reference).
 - **Query Params:** `userid`, `status`, `network`, `payinId`, `trnId`, `page`, `limit`
 - **Examples:**
   - `GET /api/admin/payins?userid=3056579&page=1&limit=20`
@@ -233,6 +233,77 @@ Balance increase = `payin amount * exchangeRate`. Rate configurable per `USDT` g
 
 ## Pagination Convention
 All list endpoints return `{ count: totalDocs, page, limit, totalPages, ... }` with `limit max 100`.
+
+---
+
+## INR Bonus Config (Admin)
+
+Admin can configure bonus rates for INR deposits. Bonus = `(amount × bonusPercentage / 100) + bonusFlat`. Applied automatically on SimplyPay webhook callback.
+
+### Get Bonus Config
+
+#### Endpoint: `GET /api/admin/bonus-config`
+- **Headers:** `Authorization: Bearer <admin_token>`
+- **Response (200):**
+  ```json
+  {
+    "success": true,
+    "config": {
+      "bonusPercentage": 5.2,
+      "bonusFlat": 6,
+      "isActive": true,
+      "updatedAt": "2026-09-05T10:00:00.000Z"
+    }
+  }
+  ```
+
+### Update Bonus Config
+
+#### Endpoint: `POST /api/admin/bonus-config`
+- **Headers:** `Authorization: Bearer <admin_token>`, `Content-Type: application/json`
+- **Request Body:**
+  ```json
+  {
+    "bonusPercentage": 5.2,
+    "bonusFlat": 6,
+    "isActive": true
+  }
+  ```
+  All fields optional — only provided fields are updated.
+  - `bonusPercentage`: number `>= 0` (e.g. 5.2 = 5.2%)
+  - `bonusFlat`: number `>= 0` (flat INR amount)
+  - `isActive`: boolean — enable/disable bonus
+- **Response (200):**
+  ```json
+  {
+    "success": true,
+    "msg": "Bonus config updated",
+    "config": {
+      "bonusPercentage": 5.2,
+      "bonusFlat": 6,
+      "isActive": true,
+      "updatedAt": "2026-09-05T10:05:00.000Z"
+    }
+  }
+  ```
+- **Errors:**
+  - 400: `{ "success": "failed", "msg": "Invalid bonusPercentage" }`
+  - 400: `{ "success": "failed", "msg": "Invalid bonusFlat" }`
+  - 401: `{ "success": "failed", "msg": "Unauthorized: ..." }`
+  - 403: `{ "success": "failed", "msg": "Forbidden: Admin access required" }`
+  - 500: `{ "success": "failed", "msg": "Failed to update bonus config" }`
+
+### Bonus Calculation Example
+```
+amount = 100 INR
+bonusPercentage = 5.2
+bonusFlat = 6
+
+percentageBonus = 100 × 5.2 / 100 = 5.2
+flatBonus = 6
+totalBonus = 5.2 + 6 = 11.2
+receivedAmount = 100 + 11.2 = 111.2
+```
 
 ---
 
@@ -501,7 +572,7 @@ These endpoints are called by SimplyPay gateway. No auth required.
 ### Payin Callback
 - **URL:** `POST /webhook/simplypay/payin`
 - **Trigger:** When user completes payment
-- **Logic:** Verifies signature → updates Payin to `success` → creates `Transaction (credit, success)` with `balanceAfter = old + amount`
+- **Logic:** Verifies signature → calculates bonus (percentage + flat from BonusConfig) → updates Payin to `success` (stores `bonusAmount`, `receivedAmount`) → creates `Transaction (credit, success)` with `amount = receivedAmount`, `balanceAfter = old + receivedAmount`
 - **Response:** Always returns `{ "success": true }` with status 200
 
 ### Payout Callback
