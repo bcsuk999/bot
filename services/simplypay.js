@@ -2,30 +2,44 @@ const crypto = require('crypto');
 
 const BASE_URL = process.env.SIMPLYPAY_BASE_URL || 'https://api.paysimply.net/api/v2';
 const APP_ID = process.env.SIMPLYPAY_APP_ID;
-const SECRET = process.env.SIMPLYPAY_SECRET_KEY || process.env.SIMPLYPAY_SECRET;
+const SECRET = process.env.SIMPLYPAY_SECRET;
 
-function parseExtra(extra) {
-  const keys = Object.keys(extra).sort();
-  return keys.map((k) => `${k}=${extra[k]}`).join('&');
-}
+function parseExtra(ext) {
+  if (!ext || typeof ext !== 'object') {
+    return null;
+  }
+  const extra = { ...ext };
+  const keys = Object.keys(extra);
+  keys.sort();
 
-function generateSign(params, secret) {
-  const keys = Object.keys(params)
-    .filter((k) => k !== 'sign' && params[k] !== null && params[k] !== undefined)
-    .sort();
-
-  const signStr = keys
-    .map((k) => {
-      if (typeof params[k] === 'object' && params[k] !== null && !Array.isArray(params[k])) {
-        return `${k}=${parseExtra(params[k])}`;
+  return keys
+    .map((key) => {
+      const value = extra[key];
+      if (value && typeof value === 'object') {
+        return `${key}=${JSON.stringify(value)}`;
       }
-      return `${k}=${params[k]}`;
+      return `${key}=${value}`;
     })
     .join('&');
+}
 
-  const full = signStr + '&key=' + (secret || SECRET);
-  console.log('SimplyPay signStr:', full);
-  return crypto.createHash('sha256').update(full, 'utf8').digest('hex');
+function generateSign(params, appSecret) {
+  const paramsKeys = Object.keys(params).filter((key) => key !== 'sign' && params[key]);
+  paramsKeys.sort();
+  let paramsString = paramsKeys
+    .map((key) => {
+      const value = params[key];
+      if (value && typeof value === 'object') {
+        return `${key}=${parseExtra(value)}`;
+      }
+      return `${key}=${value}`;
+    })
+    .join('&');
+  if (appSecret) {
+    paramsString += `&key=${appSecret}`;
+  }
+  console.log('SimplyPay signStr:', paramsString);
+  return crypto.createHash('sha256').update(paramsString, 'utf8').digest('hex');
 }
 
 function verifySign(params) {
@@ -57,12 +71,12 @@ async function createPaymentOrder({ merOrderNo, amount, returnUrl, notifyUrl, at
     merOrderNo,
     currency: 'INR',
     amount: String(amount),
-    returnUrl: returnUrl != null ? returnUrl : (process.env.SIMPLYPAY_RETURN_URL || ''),
+    returnUrl: returnUrl || process.env.SIMPLYPAY_RETURN_URL,
     notifyUrl: notifyUrl || process.env.SIMPLYPAY_NOTIFY_URL,
     attach: attach || '',
     extra: extra || {},
   };
-  params.sign = generateSign(params);
+  params.sign = generateSign(params, SECRET);
   console.log('SimplyPay createPaymentOrder params:', JSON.stringify(params, null, 2));
   console.log('SimplyPay SECRET loaded:', SECRET ? SECRET.substring(0, 4) + '...' : 'MISSING');
   return apiCall('/payment/order/create', params);
@@ -78,7 +92,7 @@ async function createPayoutOrder({ merOrderNo, amount, notifyUrl, attach, extra 
     attach: attach || '',
     extra: extra || {},
   };
-  params.sign = generateSign(params);
+  params.sign = generateSign(params, SECRET);
   return apiCall('/payout/order/create', params);
 }
 
@@ -87,7 +101,7 @@ async function queryOrder(merOrderNo) {
     appId: APP_ID,
     merOrderNo,
   };
-  params.sign = generateSign(params);
+  params.sign = generateSign(params, SECRET);
   const qs = new URLSearchParams(params).toString();
   const url = BASE_URL + '/payment/order/query?' + qs;
   const res = await fetch(url);
