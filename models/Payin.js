@@ -26,7 +26,7 @@ const payinSchema = new mongoose.Schema(
     },
     network: {
       type: String,
-      enum: ['TRC20', 'BEP20', 'INR'],
+      enum: ['TRC20', 'BEP20', 'INR', 'SPAY'],
       default: null,
     },
     amount: {
