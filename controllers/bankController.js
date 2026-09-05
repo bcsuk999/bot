@@ -90,7 +90,7 @@ exports.updateBankStatus = async (req, res) => {
     const bank = await Bank.findOneAndUpdate(
       { accountNumber: accountNumber.trim(), user: req.user.userId },
       { status },
-      { new: true }
+      { returnDocument: 'after' }
     ).select('bankName holderName accountNumber ifsc status createdAt updatedAt');
 
     if (!bank) {

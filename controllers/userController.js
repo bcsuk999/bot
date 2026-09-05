@@ -21,7 +21,7 @@ async function reserveUserId() {
   const counter = await Counter.findOneAndUpdate(
     { _id: 'userid' },
     { $inc: { seq: 1 } },
-    { new: true, upsert: true }
+    { returnDocument: 'after', upsert: true }
   ).lean();
 
   if (counter.seq !== 1) {

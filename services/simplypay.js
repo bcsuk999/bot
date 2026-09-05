@@ -38,7 +38,13 @@ async function apiCall(path, body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  return res.json();
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    console.error('SimplyPay API non-JSON response from', url, 'status:', res.status, 'body:', text.substring(0, 500));
+    return { code: -1, msg: `API returned non-JSON (status ${res.status})` };
+  }
 }
 
 async function createPaymentOrder({ merOrderNo, amount, returnUrl, notifyUrl, attach, extra }) {
@@ -79,7 +85,13 @@ async function queryOrder(merOrderNo) {
   const qs = new URLSearchParams(params).toString();
   const url = BASE_URL + '/payment/order/query?' + qs;
   const res = await fetch(url);
-  return res.json();
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    console.error('SimplyPay query non-JSON response from', url, 'status:', res.status, 'body:', text.substring(0, 500));
+    return { code: -1, msg: `API returned non-JSON (status ${res.status})` };
+  }
 }
 
 module.exports = {

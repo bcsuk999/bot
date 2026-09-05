@@ -34,7 +34,7 @@ exports.togglePayoutStatus = async (req, res) => {
     const user = await User.findByIdAndUpdate(
       req.user.userId,
       { withdrawal },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     return res.json({
