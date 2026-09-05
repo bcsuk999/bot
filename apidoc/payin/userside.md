@@ -76,13 +76,12 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
 - **Request Body:**
   ```json
   {
-    "amount": 500,
-    "name": "John",
-    "email": "john@example.com",
-    "mobile": "9999999999"
+    "amount": 100,
+    "currency": "INR",
+    "network": "SPAY"
   }
   ```
-  Only `amount` is required. `name`, `email`, `mobile` are optional.
+  Only `amount` is required. `currency` and `network` are accepted but ignored (always INR/SPAY).
 - **Validation:**
   - `amount` required, must be number `>0`
 - **Response Success (201):**
@@ -90,7 +89,7 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
   {
     "success": true,
     "payinId": "FPAY202609050001",
-    "amount": 500,
+    "amount": 100,
     "currency": "INR",
     "paymentLink": "https://...",
     "deepLink": "upi://...",
