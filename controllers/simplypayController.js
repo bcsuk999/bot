@@ -77,7 +77,7 @@ exports.createPayin = async (req, res) => {
       attach: `deposit_${payinId}`,
       extra: {
         name: user?.mobile || 'User',
-        email: '',
+        email: `${user?.mobile || '9999999999'}@example.com`,
         mobile: user?.mobile || '',
       },
     });
