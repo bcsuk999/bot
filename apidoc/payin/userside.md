@@ -16,7 +16,7 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
 ### Create Payin (Deposit)
 
 #### Endpoint: `POST /api/user/payin`
-- **Description:** Create a USDT payin for TRC20 or BEP20. Does **NOT** credit balance instantly — creates `Payin` with `status=pending` and a `Transaction` with `type=credit, status=pending, balanceAfter=currentBalance`. Balance is credited only after blockchain confirmation (admin confirm in Phase 2).
+- **Description:** Create a USDT payin for TRC20 or BEP20. Does **NOT** credit balance instantly — creates `Payin` with `status=pending`. Balance is credited only after admin approval.
 - **Headers:**
   ```
   Authorization: Bearer <token>
@@ -38,14 +38,11 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
   - `amount` / `amt` required, must be number `>0`
   - `network` / `net` required, must be `TRC20` or `BEP20` (case-insensitive, stored uppercase)
   - `currency` **required**, must be `USDT`
-- **Deposit Addresses (hardcoded Phase 1):**
-  - `TRC20` → `TQRcQg2naLxZGxuWCv7E53VgEasRAdPL8v`
-  - `BEP20` → `0x4993D6bD7E9b27D5B306F36ec0b4Cea8927BB2fB`
-  - Phase 2 will make these admin-editable via `DepositAddress` collection.
 - **Response Success (201):**
   ```json
   {
     "success": true,
+    "payinId": "PAY202608240001",
     "address": "0x4993D6bD7E9b27D5B306F36ec0b4Cea8927BB2fB",
     "currency": "USDT",
     "amount": 120,
@@ -63,6 +60,52 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
   - 400: `{ "success": "failed", "msg": "Deposit address not configured for TRC20" }`
   - 401: `{ "success": "failed", "msg": "Unauthorized: No token provided" }`
   - 409: `{ "success": "failed", "msg": "Duplicate payin, please retry" }`
+  - 500: `{ "success": "failed", "msg": "Failed to create payin" }`
+
+---
+
+### Create INR Deposit (SimplyPay)
+
+#### Endpoint: `POST /api/user/simplypay/deposit`
+- **Description:** Create an INR deposit via SimplyPay gateway. Returns a payment link for the user to complete payment. Balance is credited automatically on webhook callback (no admin approval needed).
+- **Headers:**
+  ```
+  Authorization: Bearer <token>
+  Content-Type: application/json
+  ```
+- **Request Body:**
+  ```json
+  {
+    "amount": 500,
+    "name": "John",
+    "email": "john@example.com",
+    "mobile": "9999999999"
+  }
+  ```
+  Only `amount` is required. `name`, `email`, `mobile` are optional.
+- **Validation:**
+  - `amount` required, must be number `>0`
+- **Response Success (201):**
+  ```json
+  {
+    "success": true,
+    "payinId": "FPAY202609050001",
+    "amount": 500,
+    "currency": "INR",
+    "paymentLink": "https://...",
+    "deepLink": "upi://...",
+    "orderNo": "20250905123456789"
+  }
+  ```
+- **Flow:**
+  1. User calls this endpoint → gets `paymentLink`
+  2. User opens `paymentLink` → completes payment
+  3. SimplyPay calls `POST /webhook/simplypay/payin` → auto-credits balance
+- **Errors:**
+  - 400: `{ "success": "failed", "msg": "amount is required" }`
+  - 400: `{ "success": "failed", "msg": "Invalid amount" }`
+  - 400: `{ "success": "failed", "msg": "SimplyPay order failed" }`
+  - 401: `{ "success": "failed", "msg": "Unauthorized: ..." }`
   - 500: `{ "success": "failed", "msg": "Failed to create payin" }`
 
 ---
@@ -333,8 +376,16 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
 
 ---
 
-## Flow (Why balance not instant)
-1. `POST /api/user/payin` → `Payin pending` + `Transaction pending, balanceAfter = old balance`
+## Flow
+
+### USDT (Crypto) Payin
+1. `POST /api/user/payin` → `Payin pending` (no Transaction created)
 2. User sends USDT on chain to `address`
-3. Admin verifies `txHash` → `POST /api/admin/transactions/:trnId/approve` with optional `{"exchangeRate":90}` else uses configured rate → `creditedAmount = amount * rate`, `balanceAfter = old + creditedAmount`
-4. `GET /api/user/balance` → `{"success":true,"balance":9000}` reflects multiplied amount
+3. Admin approves → `POST /api/admin/payins/:payinId/approve` → creates `Transaction (credit, success)` with `balanceAfter = old + amount * exchangeRate`
+4. `GET /api/user/balance` → reflects credited amount
+
+### INR (SimplyPay) Payin
+1. `POST /api/user/simplypay/deposit` → `Payin pending` + returns `paymentLink`
+2. User opens `paymentLink` → completes payment
+3. SimplyPay calls `POST /webhook/simplypay/payin` → auto-creates `Transaction (credit, success)` with `balanceAfter = old + amount`
+4. `GET /api/user/balance` → reflects credited amount (no admin approval needed)

@@ -22,12 +22,12 @@ const payinSchema = new mongoose.Schema(
       type: String,
       required: true,
       uppercase: true,
-      enum: ['USDT'],
+      enum: ['USDT', 'INR'],
     },
     network: {
       type: String,
-      required: true,
-      enum: ['TRC20', 'BEP20'],
+      enum: ['TRC20', 'BEP20', 'INR'],
+      default: null,
     },
     amount: {
       type: mongoose.Schema.Types.Decimal128,
@@ -36,7 +36,7 @@ const payinSchema = new mongoose.Schema(
     },
     address: {
       type: String,
-      required: true,
+      default: null,
     },
     status: {
       type: String,

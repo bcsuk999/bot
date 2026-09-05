@@ -130,26 +130,25 @@ Manage USDT deposit addresses per network. When user calls `POST /api/user/payin
 - 404 if not found
 
 ### Approve Transaction (Credit)
-#### Endpoint: `POST /api/admin/transactions/:trnId/approve`
-- **Description:** Approves a `pending` `credit` transaction → `balanceAfter = previousSuccessBalance + (amount * exchangeRate)`. Exchange rate is fetched from `ExchangeRate` (global or per-network) or `exchangeRate` override in body. Updates linked Payin to `success` with `completedAt`, `detectedAmount`, `exchangeRate`, `creditedAmount`.
+#### Endpoint: `POST /api/admin/payins/:payinId/approve`
+- **Description:** Approves a pending payin → creates a new `Transaction (credit, success)` with `balanceAfter = previousBalance + (amount * exchangeRate)`. Exchange rate is fetched from `ExchangeRate` or `exchangeRate` override in body.
 - **Headers:** `Authorization: Bearer <admin_token>`
 - **Request Body (optional):** `{ "txHash": "0x...", "remark": "manual approve", "exchangeRate": 90 }`
-- If `exchangeRate` not provided, uses configured rate (`GET /api/admin/exchange-rates/current?currency=USDT&network=BEP20` else global, fallback `1`).
+- If `exchangeRate` not provided, uses configured rate (fallback `1`).
 - **Response:**
   ```json
-  { "success": true, "msg": "Transaction approved", "transaction": { "trnId":"TXN...", "amount":100, "type":"credit", "note":"payin", "remark":"BEP20 deposit", "balanceAfter":9000, "status":"success", "exchangeRate":90, "creditedAmount":9000 } }
+  { "success": true, "msg": "Payin approved", "transaction": { "trnId":"TXN...", "amount":100, "type":"credit", "note":"payin", "remark":"BEP20 deposit", "balanceAfter":9000, "status":"success", "exchangeRate":90, "creditedAmount":9000 } }
   ```
 - **Errors:**
-  - 404: `{ "success": "failed", "msg": "Transaction not found" }`
-  - 400: `{ "success": "failed", "msg": "Cannot approve, status is success" }` (only pending can be approved)
-  - 400: `{ "success": "failed", "msg": "Only credit transactions can be approved as payin" }`
+  - 404: `{ "success": "failed", "msg": "Payin not found" }`
+  - 400: `{ "success": "failed", "msg": "Cannot approve, payin status is success" }`
 
 ### Reject Transaction
-#### Endpoint: `POST /api/admin/transactions/:trnId/reject`
-- **Description:** Rejects a `pending` transaction → `status=failed`, `balanceAfter` unchanged, Payin → `failed`.
+#### Endpoint: `POST /api/admin/payins/:payinId/reject`
+- **Description:** Rejects a pending payin → updates Payin status to `failed`. No Transaction created (no balance change).
 - **Request Body (optional):** `{ "remark": "invalid proof" }`
-- **Response:** `{ "success": true, "msg": "Transaction rejected", "transaction": { "trnId":"TXN...", "status":"failed", "balanceAfter":0 } }`
-- Errors same as approve (only pending).
+- **Response:** `{ "success": true, "msg": "Payin rejected", "payin": { "payinId":"PAY...", "status":"failed" } }`
+- Errors: only pending payins can be rejected.
 
 ### Reverse Transaction
 #### Endpoint: `POST /api/admin/transactions/:trnId/reverse`
@@ -391,7 +390,7 @@ All list endpoints return `{ count: totalDocs, page, limit, totalPages, ... }` w
 ### Reject Payout
 
 #### Endpoint: `POST /api/admin/payouts/:payoutId/reject`
-- **Description:** Rejects payout and **refunds** the amount back to user's balance.
+- **Description:** Rejects payout and **refunds** the amount back to user's balance. Marks original debit transaction as `reversed`.
 - **Headers:** `Authorization: Bearer <admin_token>`
 - **Request Body:**
   ```json
@@ -418,3 +417,95 @@ All list endpoints return `{ count: totalDocs, page, limit, totalPages, ... }` w
   - 400: `{ "success": "failed", "msg": "remark is required" }`
   - 400: `{ "success": "failed", "msg": "Cannot reject, status is success" }`
   - 404: `{ "success": "failed", "msg": "Payout not found" }`
+
+---
+
+## SimplyPay Payout Processing (Admin)
+
+### Process Payout via SimplyPay
+
+#### Endpoint: `POST /api/admin/payouts/:payoutId/process`
+- **Description:** Process a pending payout via SimplyPay gateway. Supports UPI and IFSC (bank transfer). Payout webhook callback auto-updates status.
+- **Headers:** `Authorization: Bearer <admin_token>`
+- **Request Body (UPI):**
+  ```json
+  {
+    "payoutType": "UPI",
+    "vpa": "user@upi",
+    "name": "John",
+    "email": "john@example.com",
+    "mobile": "9999999999"
+  }
+  ```
+- **Request Body (IFSC/Bank):**
+  ```json
+  {
+    "payoutType": "IFSC",
+    "ifsc": "SBIN0001234",
+    "account": "1234567890",
+    "name": "John",
+    "email": "john@example.com",
+    "mobile": "9999999999"
+  }
+  ```
+- **Validation:**
+  - `payoutType` required: `UPI` or `IFSC`
+  - UPI: `vpa` required
+  - IFSC: `ifsc` and `account` required
+  - `name`, `email`, `mobile` optional (defaults to user mobile)
+- **Response (200):**
+  ```json
+  {
+    "success": true,
+    "msg": "Payout processed via SimplyPay",
+    "payoutId": "PAYOUT202608310001",
+    "orderNo": "20250905123456789"
+  }
+  ```
+- **Errors:**
+  - 400: `{ "success": "failed", "msg": "vpa is required for UPI payout" }`
+  - 400: `{ "success": "failed", "msg": "ifsc and account are required for IFSC payout" }`
+  - 400: `{ "success": "failed", "msg": "Cannot process, status is success" }`
+  - 400: `{ "success": "failed", "msg": "SimplyPay payout failed" }`
+  - 404: `{ "success": "failed", "msg": "Payout not found" }`
+
+---
+
+### Query Order Status
+
+#### Endpoint: `GET /api/admin/simplypay/query?merOrderNo=PAYOUT202608310001`
+- **Description:** Query SimplyPay for order status.
+- **Headers:** `Authorization: Bearer <admin_token>`
+- **Query Params:** `merOrderNo` (required) — the payoutId or payinId
+- **Response (200):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "orderStatus": 2,
+      "orderNo": "...",
+      "merOrderNo": "PAYOUT202608310001",
+      "amount": 100,
+      "currency": "INR"
+    }
+  }
+  ```
+- **Order Status Codes:** `0,1,-4` = PENDING | `2,3` = SUCCESS | `-1,-2` = FAILED | `-3` = REFUNDED
+
+---
+
+## Webhook Callbacks (Gateway → Backend)
+
+These endpoints are called by SimplyPay gateway. No auth required.
+
+### Payin Callback
+- **URL:** `POST /webhook/simplypay/payin`
+- **Trigger:** When user completes payment
+- **Logic:** Verifies signature → updates Payin to `success` → creates `Transaction (credit, success)` with `balanceAfter = old + amount`
+- **Response:** Always returns `{ "success": true }` with status 200
+
+### Payout Callback
+- **URL:** `POST /webhook/simplypay/payout`
+- **Trigger:** When payout is processed by gateway
+- **Logic:** Verifies signature → on success: updates Payout to `success` | on failure: updates Payout to `failed`, marks original transaction `reversed`, creates refund transaction
+- **Response:** Always returns `{ "success": true }` with status 200

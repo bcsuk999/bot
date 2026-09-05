@@ -5,6 +5,7 @@ const { addBank, getBanks, updateBankStatus } = require('../controllers/bankCont
 const { createPayin, getPayinList, getTransactions, getBalance, submitPayinTxHash } = require('../controllers/payinController');
 const { getPayinExchangeRate } = require('../controllers/payinExchangeController');
 const { togglePayoutStatus, getPayoutSwitch } = require('../controllers/payoutController');
+const simplypayController = require('../controllers/simplypayController');
 const auth = require('../middleware/auth');
 const optionalAuth = require('../middleware/optionalAuth');
 
@@ -31,5 +32,8 @@ router.patch('/bankstatus', auth, updateBankStatus);
 // Payout routes
 router.get('/payout-switch', auth, getPayoutSwitch);
 router.patch('/payout-switch', auth, togglePayoutStatus);
+
+// SimplyPay INR deposit
+router.post('/simplypay/deposit', auth, simplypayController.createPayin);
 
 module.exports = router;

@@ -53,11 +53,10 @@ const transactionSchema = new mongoose.Schema(
     referenceId: {
       type: String,
       default: null,
-      index: true,
     },
     network: {
       type: String,
-      enum: ['TRC20', 'BEP20'],
+      enum: ['TRC20', 'BEP20', 'INR'],
       default: null,
     },
     currency: {

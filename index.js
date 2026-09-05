@@ -6,6 +6,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const userRouter = require('./routes/user');
 const adminRouter = require('./routes/admin');
+const simplypayController = require('./controllers/simplypayController');
 const connectDB = require('./db/conn');
 
 const app = express();
@@ -34,13 +35,17 @@ app.use(
     optionsSuccessStatus: 204,
   })
 );
-app.use(express.json());
+app.use(express.json({ type: '*/*' }));
 
 connectDB();
 
 app.use('/api/user', userRouter);
 app.use('/apii/user', userRouter); // alias for typo /apii/user/payin/exchange
 app.use('/api/admin', adminRouter);
+
+// SimplyPay webhook callbacks (no auth - called by gateway)
+app.post('/webhook/simplypay/payin', simplypayController.payinCallback);
+app.post('/webhook/simplypay/payout', simplypayController.payoutCallback);
 
 app.get('/', (req, res) => {
   res.status(200).json({

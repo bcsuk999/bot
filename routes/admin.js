@@ -32,6 +32,7 @@ const {
   approvePayout,
   rejectPayout,
 } = require('../controllers/adminPayoutController');
+const simplypayController = require('../controllers/simplypayController');
 const auth = require('../middleware/auth');
 const requireAdmin = require('../middleware/requireAdmin');
 
@@ -72,5 +73,9 @@ router.post('/payout', auth, requireAdmin, createPayout);
 router.get('/payouts', auth, requireAdmin, listPayouts);
 router.post('/payouts/:payoutId/approve', auth, requireAdmin, approvePayout);
 router.post('/payouts/:payoutId/reject', auth, requireAdmin, rejectPayout);
+
+// SimplyPay payout processing + order query
+router.post('/payouts/:payoutId/process', auth, requireAdmin, simplypayController.processPayout);
+router.get('/simplypay/query', auth, requireAdmin, simplypayController.queryOrder);
 
 module.exports = router;
