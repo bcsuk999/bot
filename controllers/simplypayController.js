@@ -38,7 +38,7 @@ function formatTrnId(seq) {
 // User creates INR deposit via SimplyPay
 exports.createPayin = async (req, res) => {
   try {
-    const { amount, name, email, mobile } = req.body;
+    const { amount, currency, network } = req.body;
 
     if (!amount) {
       return res.status(400).json({ success: 'failed', msg: 'amount is required' });
@@ -58,7 +58,7 @@ exports.createPayin = async (req, res) => {
       userid: req.user.userid,
       currency: 'INR',
       amount: parsedAmount,
-      network: 'INR',
+      network: 'SPAY',
       address: null,
       status: 'pending',
       transactionType: 'payin',
@@ -68,14 +68,16 @@ exports.createPayin = async (req, res) => {
       creditedAmount: parsedAmount,
     });
 
+    const user = await User.findById(req.user.userId).lean();
+
     const apiRes = await simplypay.createPaymentOrder({
       merOrderNo: payinId,
       amount: parsedAmount,
       attach: `deposit_${payinId}`,
       extra: {
-        name: name || 'User',
-        email: email || '',
-        mobile: mobile || '',
+        name: user?.mobile || 'User',
+        email: '',
+        mobile: user?.mobile || '',
       },
     });
 
