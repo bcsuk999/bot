@@ -4,7 +4,6 @@ const userSchema = new mongoose.Schema({
   mobile: {
     type: String,
     required: true,
-    unique: true,
     trim: true
   },
   password: {
@@ -19,7 +18,6 @@ const userSchema = new mongoose.Schema({
   },
   userid: {
     type: Number,
-    unique: true,
   },
   role: {
     type: String,
