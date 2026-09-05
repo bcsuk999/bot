@@ -33,6 +33,7 @@ const {
   rejectPayout,
 } = require('../controllers/adminPayoutController');
 const simplypayController = require('../controllers/simplypayController');
+const { getBonusConfig, updateBonusConfig } = require('../controllers/adminBonusController');
 const auth = require('../middleware/auth');
 const requireAdmin = require('../middleware/requireAdmin');
 
@@ -77,5 +78,9 @@ router.post('/payouts/:payoutId/reject', auth, requireAdmin, rejectPayout);
 // SimplyPay payout processing + order query
 router.post('/payouts/:payoutId/process', auth, requireAdmin, simplypayController.processPayout);
 router.get('/simplypay/query', auth, requireAdmin, simplypayController.queryOrder);
+
+// INR bonus config (percentage + flat)
+router.get('/bonus-config', auth, requireAdmin, getBonusConfig);
+router.post('/bonus-config', auth, requireAdmin, updateBonusConfig);
 
 module.exports = router;

@@ -33,7 +33,7 @@ exports.adminListPayins = async (req, res) => {
     const filter = {};
     if (userid && !isNaN(Number(userid))) filter.userid = Number(userid);
     if (status && ['pending', 'success', 'failed', 'reversed'].includes(status)) filter.status = status;
-    if (network && ['TRC20', 'BEP20'].includes(String(network).toUpperCase())) filter.network = String(network).toUpperCase();
+    if (network && ['TRC20', 'BEP20', 'SPAY'].includes(String(network).toUpperCase())) filter.network = String(network).toUpperCase();
     if (payinId) filter.payinId = payinId;
     // if trnId given, find transaction's referenceId first
     if (trnId) {

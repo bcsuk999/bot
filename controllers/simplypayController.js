@@ -5,6 +5,7 @@ const Counter = require('../models/Counter');
 const User = require('../models/User');
 const Bank = require('../models/Bank');
 const simplypay = require('../services/simplypay');
+const { calculateBonus } = require('./adminBonusController');
 
 function parseBalance(v) {
   if (v == null) return 0;
@@ -89,10 +90,15 @@ exports.createPayin = async (req, res) => {
       return res.status(400).json({ success: 'failed', msg: apiRes.msg || 'SimplyPay order failed' });
     }
 
+    const bonus = await calculateBonus(parsedAmount);
+    const receivedAmount = parsedAmount + bonus;
+
     return res.status(201).json({
       success: true,
       payinId,
       amount: parsedAmount,
+      bonus,
+      receivedAmount,
       currency: 'INR',
       paymentLink: apiRes.data?.params?.paymentLink || null,
       deepLink: apiRes.data?.params?.deepLink || null,
@@ -128,7 +134,9 @@ exports.payinCallback = async (req, res) => {
     if (SUCCESS_STATUSES.includes(orderStatus)) {
       const currentBalance = await getCurrentBalance(payin.user);
       const amount = parseBalance(payin.amount);
-      const newBalance = currentBalance + amount;
+      const bonus = await calculateBonus(amount);
+      const receivedAmount = amount + bonus;
+      const newBalance = currentBalance + receivedAmount;
 
       const seq = await getNextSequence('transactionId');
       const trnId = formatTrnId(seq);
@@ -137,24 +145,26 @@ exports.payinCallback = async (req, res) => {
         trnId,
         user: payin.user,
         userid: payin.userid,
-        amount,
+        amount: receivedAmount,
         type: 'credit',
         note: 'payin',
-        remark: 'INR deposit via SimplyPay',
+        remark: bonus > 0 ? `INR deposit via SimplyPay + ${bonus} bonus` : 'INR deposit via SimplyPay',
         balanceAfter: newBalance,
         status: 'success',
         referenceId: payin.payinId,
         network: 'INR',
         currency: 'INR',
         exchangeRate: 1,
-        creditedAmount: amount,
+        creditedAmount: receivedAmount,
       });
 
       payin.status = 'success';
       payin.completedAt = new Date();
       payin.detectedAmount = amount;
       payin.exchangeRate = 1;
-      payin.creditedAmount = amount;
+      payin.creditedAmount = receivedAmount;
+      payin.bonusAmount = bonus;
+      payin.receivedAmount = receivedAmount;
       await payin.save();
     } else if (FAILED_STATUSES.includes(orderStatus)) {
       payin.status = 'failed';

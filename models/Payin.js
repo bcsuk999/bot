@@ -87,6 +87,16 @@ const payinSchema = new mongoose.Schema(
       default: null,
       get: (v) => (v ? parseFloat(v.toString()) : v),
     },
+    bonusAmount: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: 0,
+      get: (v) => (v ? parseFloat(v.toString()) : v),
+    },
+    receivedAmount: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: null,
+      get: (v) => (v ? parseFloat(v.toString()) : v),
+    },
     completedAt: {
       type: Date,
       default: null,

@@ -5,6 +5,7 @@ const { addBank, getBanks, updateBankStatus } = require('../controllers/bankCont
 const { createPayin, getPayinList, getTransactions, getBalance, submitPayinTxHash } = require('../controllers/payinController');
 const { getPayinExchangeRate } = require('../controllers/payinExchangeController');
 const { togglePayoutStatus, getPayoutSwitch } = require('../controllers/payoutController');
+const { getBonusConfig } = require('../controllers/adminBonusController');
 const simplypayController = require('../controllers/simplypayController');
 const auth = require('../middleware/auth');
 const optionalAuth = require('../middleware/optionalAuth');
@@ -35,5 +36,8 @@ router.patch('/payout-switch', auth, togglePayoutStatus);
 
 // SimplyPay INR deposit
 router.post('/simplypay/deposit', auth, simplypayController.createPayin);
+
+// Bonus config (public - users can see current bonus rates)
+router.get('/bonus-config', optionalAuth, getBonusConfig);
 
 module.exports = router;

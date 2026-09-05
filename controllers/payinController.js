@@ -115,7 +115,7 @@ exports.getPayinList = async (req, res) => {
     const { page = 1, limit = 20, status, network } = req.query;
     const filter = { user: req.user.userId };
     if (status && ['pending', 'success', 'failed', 'reversed'].includes(status)) filter.status = status;
-    if (network && ['TRC20', 'BEP20'].includes(String(network).toUpperCase())) filter.network = String(network).toUpperCase();
+    if (network && ['TRC20', 'BEP20', 'SPAY'].includes(String(network).toUpperCase())) filter.network = String(network).toUpperCase();
 
     const pageNum = Math.max(parseInt(page, 10) || 1, 1);
     const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
@@ -129,7 +129,8 @@ exports.getPayinList = async (req, res) => {
       payinId: p.payinId,
       currency: p.currency,
       amount: toNum(p.amount),
-      receivedAmount: p.creditedAmount != null ? toNum(p.creditedAmount) : null,
+      bonusAmount: toNum(p.bonusAmount) || 0,
+      receivedAmount: toNum(p.receivedAmount) || toNum(p.creditedAmount) || toNum(p.amount),
       status: p.status,
       transactionType: p.transactionType,
       remark: p.remark,
@@ -149,7 +150,7 @@ exports.getTransactions = async (req, res) => {
     if (status && ['pending', 'success', 'failed', 'reversed'].includes(status)) filter.status = status;
     if (type && ['credit', 'debit'].includes(type)) filter.type = type;
     if (note && ['payin', 'payout', 'reversal'].includes(note)) filter.note = note;
-    if (network && ['TRC20', 'BEP20'].includes(String(network).toUpperCase())) filter.network = String(network).toUpperCase();
+    if (network && ['TRC20', 'BEP20', 'INR'].includes(String(network).toUpperCase())) filter.network = String(network).toUpperCase();
 
     const pageNum = Math.max(parseInt(page, 10) || 1, 1);
     const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
