@@ -2,7 +2,7 @@ const crypto = require('crypto');
 
 const BASE_URL = process.env.SIMPLYPAY_BASE_URL || 'https://api.paysimply.net/api/v2';
 const APP_ID = process.env.SIMPLYPAY_APP_ID;
-const SECRET = process.env.SIMPLYPAY_SECRET;
+const SECRET = process.env.SIMPLYPAY_SECRET_KEY || process.env.SIMPLYPAY_SECRET;
 
 function parseExtra(extra) {
   const keys = Object.keys(extra).sort();
