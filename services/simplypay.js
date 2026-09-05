@@ -4,25 +4,27 @@ const BASE_URL = process.env.SIMPLYPAY_BASE_URL || 'https://api.paysimply.net/ap
 const APP_ID = process.env.SIMPLYPAY_APP_ID;
 const SECRET = process.env.SIMPLYPAY_SECRET;
 
-function generateSign(params) {
-  const sorted = Object.keys(params)
-    .filter((k) => k !== 'sign' && params[k] != null && params[k] !== '')
+function parseExtra(extra) {
+  const keys = Object.keys(extra).sort();
+  return keys.map((k) => `${k}=${extra[k]}`).join('&');
+}
+
+function generateSign(params, secret) {
+  const keys = Object.keys(params)
+    .filter((k) => k !== 'sign' && params[k] !== null && params[k] !== undefined)
     .sort();
 
-  const parts = [];
-  for (const key of sorted) {
-    const val = params[key];
-    if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
-      const subKeys = Object.keys(val).sort();
-      const subParts = subKeys.map((sk) => `${sk}=${val[sk]}`).join('&');
-      parts.push(`${key}=${subParts}`);
-    } else {
-      parts.push(`${key}=${val}`);
-    }
-  }
+  const signStr = keys
+    .map((k) => {
+      if (typeof params[k] === 'object' && params[k] !== null && !Array.isArray(params[k])) {
+        return `${k}=${parseExtra(params[k])}`;
+      }
+      return `${k}=${params[k]}`;
+    })
+    .join('&');
 
-  const str = parts.join('&') + '&key=' + SECRET;
-  return crypto.createHash('sha256').update(str).digest('hex');
+  const full = signStr + '&key=' + (secret || SECRET);
+  return crypto.createHash('sha256').update(full, 'utf8').digest('hex');
 }
 
 function verifySign(params) {
@@ -33,18 +35,10 @@ function verifySign(params) {
 
 async function apiCall(path, body) {
   const url = BASE_URL + path;
-  const formBody = new URLSearchParams();
-  for (const [key, val] of Object.entries(body)) {
-    if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
-      formBody.append(key, JSON.stringify(val));
-    } else {
-      formBody.append(key, String(val));
-    }
-  }
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: formBody.toString(),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   });
   const text = await res.text();
   console.log('SimplyPay apiCall', path, 'status:', res.status, 'body:', text);
@@ -95,10 +89,11 @@ async function queryOrder(merOrderNo) {
   const url = BASE_URL + '/payment/order/query?' + qs;
   const res = await fetch(url);
   const text = await res.text();
+  console.log('SimplyPay queryOrder status:', res.status, 'body:', text);
   try {
     return JSON.parse(text);
   } catch (e) {
-    console.error('SimplyPay query non-JSON response from', url, 'status:', res.status, 'body:', text.substring(0, 500));
+    console.error('SimplyPay query non-JSON response from', url, 'status:', res.status, 'body:', text);
     return { code: -1, msg: `API returned non-JSON (status ${res.status})` };
   }
 }
