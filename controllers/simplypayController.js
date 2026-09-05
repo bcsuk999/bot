@@ -83,11 +83,12 @@ exports.createPayin = async (req, res) => {
     });
 
     if (apiRes.code !== 0) {
+      const errMsg = apiRes.msg || apiRes.error || `SimplyPay error (code: ${apiRes.code})`;
       payin.status = 'failed';
-      payin.remark = apiRes.msg || 'SimplyPay order failed';
+      payin.remark = errMsg;
       payin.failedAt = new Date();
       await payin.save();
-      return res.status(400).json({ success: 'failed', msg: apiRes.msg || 'SimplyPay order failed' });
+      return res.status(400).json({ success: 'failed', msg: errMsg });
     }
 
     const bonus = await calculateBonus(parsedAmount);
@@ -106,7 +107,7 @@ exports.createPayin = async (req, res) => {
     });
   } catch (err) {
     console.error('simplypay createPayin error:', err);
-    return res.status(500).json({ success: 'failed', msg: 'Failed to create payin' });
+    return res.status(500).json({ success: 'failed', msg: err.message || 'Failed to create payin' });
   }
 };
 
