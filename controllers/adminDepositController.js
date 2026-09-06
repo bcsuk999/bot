@@ -27,7 +27,7 @@ exports.seedDefaultAddresses = async (req, res) => {
       if (existsAddr) continue;
       // respect unique active per network - if network already has active, create as inactive
       const hasActive = await DepositAddress.findOne({ currency: a.currency, network: a.network, isActive: true }).lean();
-      const toCreate = { ...a, createdBy: req.user.userId, isActive: hasActive ? false : a.isActive };
+      const toCreate = { ...a, createdBy: req.user.userid, isActive: hasActive ? false : a.isActive };
       const doc = await DepositAddress.create(toCreate);
       created.push(doc);
     }
@@ -105,7 +105,7 @@ exports.createDepositAddress = async (req, res) => {
       address,
       label: label ? String(label).trim() : '',
       isActive: activeFlag,
-      createdBy: req.user.userId,
+      createdBy: req.user.userid,
     });
 
     // allow changing exchange rate along with address (global for every channel)

@@ -33,8 +33,7 @@ const depositAddressSchema = new mongoose.Schema(
       index: true,
     },
     createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: Number,
       default: null,
     },
   },
