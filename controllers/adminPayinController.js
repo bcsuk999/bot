@@ -1,6 +1,7 @@
 const Payin = require('../models/Payin');
 const Transaction = require('../models/Transaction');
 const { getRateFor } = require('./adminExchangeController');
+const { calculateBonus } = require('./adminBonusController');
 const { parseBalance, getCurrentBalance, getNextSequence, formatTrnId, getUserObjectId } = require('../utils/helpers');
 const logger = require('../utils/logger');
 
@@ -151,15 +152,23 @@ exports.adminApproveTransaction = async (req, res) => {
     const currentBalance = await getCurrentBalance(userObjId);
     const amount = parseBalance(payin.amount);
 
+    const isInr = payin.currency === 'INR' || payin.network === 'SPAY';
+
     let rate = 1;
-    if (overrideRate != null) {
+    if (!isInr && overrideRate != null) {
       const pr = Number(overrideRate);
       if (!isFinite(pr) || pr <= 0) return res.status(400).json({ success: 'failed', msg: 'Invalid exchangeRate' });
       rate = pr;
-    } else {
+    } else if (!isInr) {
       rate = await getRateFor(payin.currency || 'USDT', payin.network || null);
     }
-    const creditedAmount = amount * rate;
+
+    let bonus = 0;
+    let creditedAmount = amount * rate;
+    if (isInr) {
+      bonus = await calculateBonus(amount);
+      creditedAmount = amount + bonus;
+    }
     const newBalance = currentBalance + creditedAmount;
 
     const seq = await getNextSequence('transactionId');
@@ -169,14 +178,14 @@ exports.adminApproveTransaction = async (req, res) => {
       trnId,
       user: userObjId,
       userid: payin.userid,
-      amount,
+      amount: isInr ? creditedAmount : amount,
       type: 'credit',
       note: 'payin',
-      remark: remark ? String(remark).trim() : `${payin.network} deposit`,
+      remark: remark ? String(remark).trim() : `${isInr ? 'INR' : payin.network} deposit`,
       balanceAfter: newBalance,
       status: 'success',
       referenceId: payin.payinId,
-      network: payin.network,
+      network: isInr ? 'INR' : payin.network,
       currency: payin.currency,
       exchangeRate: rate,
       creditedAmount,
@@ -188,6 +197,10 @@ exports.adminApproveTransaction = async (req, res) => {
     if (remark) payin.remark = String(remark).trim();
     payin.exchangeRate = rate;
     payin.creditedAmount = creditedAmount;
+    if (isInr) {
+      payin.bonusAmount = bonus;
+      payin.receivedAmount = creditedAmount;
+    }
     await payin.save();
 
     res.json({
