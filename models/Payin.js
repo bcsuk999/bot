@@ -8,12 +8,6 @@ const payinSchema = new mongoose.Schema(
       index: true,
       required: true,
     },
-    user: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-      index: true,
-    },
     userid: {
       type: Number,
       index: true,
@@ -60,22 +54,9 @@ const payinSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
-    confirmations: {
-      type: Number,
-      default: 0,
-    },
-    requiredConfirmations: {
-      type: Number,
-      default: 12,
-    },
     remark: {
       type: String,
       default: '',
-    },
-    detectedAmount: {
-      type: mongoose.Schema.Types.Decimal128,
-      default: null,
-      get: (v) => (v ? parseFloat(v.toString()) : v),
     },
     exchangeRate: {
       type: mongoose.Schema.Types.Decimal128,
@@ -97,18 +78,6 @@ const payinSchema = new mongoose.Schema(
       default: null,
       get: (v) => (v ? parseFloat(v.toString()) : v),
     },
-    completedAt: {
-      type: Date,
-      default: null,
-    },
-    failedAt: {
-      type: Date,
-      default: null,
-    },
-    reversedAt: {
-      type: Date,
-      default: null,
-    },
   },
   {
     timestamps: true,
@@ -117,7 +86,7 @@ const payinSchema = new mongoose.Schema(
   }
 );
 
-payinSchema.index({ user: 1, status: 1 });
-payinSchema.index({ user: 1, createdAt: -1 });
+payinSchema.index({ userid: 1, status: 1 });
+payinSchema.index({ userid: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Payin', payinSchema);

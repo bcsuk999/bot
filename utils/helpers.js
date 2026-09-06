@@ -1,4 +1,5 @@
 const Transaction = require('../models/Transaction');
+const User = require('../models/User');
 const Counter = require('../models/Counter');
 
 function parseBalance(v) {
@@ -11,6 +12,12 @@ async function getCurrentBalance(userObjectId) {
   const last = await Transaction.findOne({ user: userObjectId, status: 'success' }).sort({ createdAt: -1 }).lean();
   if (last && last.balanceAfter != null) return parseBalance(last.balanceAfter);
   return 0;
+}
+
+async function getUserObjectId(userid) {
+  if (userid == null) return null;
+  const u = await User.findOne({ userid }).select('_id').lean();
+  return u ? u._id : null;
 }
 
 async function getNextSequence(name) {
@@ -43,6 +50,7 @@ function formatPayoutId(seq) {
 module.exports = {
   parseBalance,
   getCurrentBalance,
+  getUserObjectId,
   getNextSequence,
   formatTrnId,
   formatPayinId,

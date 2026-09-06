@@ -1,7 +1,7 @@
 const Payin = require('../models/Payin');
 const Transaction = require('../models/Transaction');
 const { getRateFor } = require('./adminExchangeController');
-const { parseBalance, getCurrentBalance, getNextSequence, formatTrnId } = require('../utils/helpers');
+const { parseBalance, getCurrentBalance, getNextSequence, formatTrnId, getUserObjectId } = require('../utils/helpers');
 const logger = require('../utils/logger');
 
 // List payins with pagination + filters (userid, status, network)
@@ -40,7 +40,6 @@ exports.adminListPayins = async (req, res) => {
     const payins = payinsRaw.map((p) => ({
       ...p,
       amount: p.amount != null ? parseFloat(p.amount.toString()) : p.amount,
-      detectedAmount: p.detectedAmount != null ? parseFloat(p.detectedAmount.toString()) : null,
       trnId: trnMap[p.payinId] || null,
     }));
     res.json({ success: true, msg: 'Payins fetched', count, page: pageNum, limit: limitNum, totalPages: Math.ceil(count / limitNum), payins });
@@ -107,7 +106,6 @@ exports.adminGetTransactionByTrnId = async (req, res) => {
       payin = {
         ...payin,
         amount: payin.amount != null ? parseFloat(payin.amount.toString()) : payin.amount,
-        detectedAmount: payin.detectedAmount != null ? parseFloat(payin.detectedAmount.toString()) : null,
       };
     }
     res.json({
@@ -149,7 +147,8 @@ exports.adminApproveTransaction = async (req, res) => {
     if (!payin) return res.status(404).json({ success: 'failed', msg: 'Payin not found' });
     if (payin.status !== 'pending') return res.status(400).json({ success: 'failed', msg: `Cannot approve, payin status is ${payin.status}` });
 
-    const currentBalance = await getCurrentBalance(payin.user);
+    const userObjId = await getUserObjectId(payin.userid);
+    const currentBalance = await getCurrentBalance(userObjId);
     const amount = parseBalance(payin.amount);
 
     let rate = 1;
@@ -168,7 +167,7 @@ exports.adminApproveTransaction = async (req, res) => {
 
     const transaction = await Transaction.create({
       trnId,
-      user: payin.user,
+      user: userObjId,
       userid: payin.userid,
       amount,
       type: 'credit',
@@ -186,9 +185,7 @@ exports.adminApproveTransaction = async (req, res) => {
 
     payin.status = 'success';
     if (txHash) payin.txHash = String(txHash).trim();
-    payin.completedAt = new Date();
     if (remark) payin.remark = String(remark).trim();
-    payin.detectedAmount = amount;
     payin.exchangeRate = rate;
     payin.creditedAmount = creditedAmount;
     await payin.save();
@@ -227,7 +224,6 @@ exports.adminRejectTransaction = async (req, res) => {
     if (payin.status !== 'pending') return res.status(400).json({ success: 'failed', msg: `Cannot reject, payin status is ${payin.status}` });
 
     payin.status = 'failed';
-    payin.failedAt = new Date();
     if (remark) payin.remark = String(remark).trim();
     await payin.save();
 
@@ -239,7 +235,6 @@ exports.adminRejectTransaction = async (req, res) => {
         amount: parseFloat(payin.amount.toString()),
         status: payin.status,
         remark: payin.remark,
-        failedAt: payin.failedAt,
       },
     });
   } catch (err) {
@@ -297,7 +292,6 @@ exports.adminReverseTransaction = async (req, res) => {
       const payin = await Payin.findOne({ payinId: original.referenceId });
       if (payin) {
         payin.status = 'reversed';
-        payin.reversedAt = new Date();
         await payin.save();
       }
     }

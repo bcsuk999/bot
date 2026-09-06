@@ -13,11 +13,6 @@ async function getDepositAddress(network) {
   return null;
 }
 
-const REQUIRED_CONFIRMATIONS = {
-  TRC20: 20,
-  BEP20: 15,
-};
-
 exports.createPayin = async (req, res) => {
   try {
     // accept both amt/amount and net/network
@@ -55,11 +50,8 @@ exports.createPayin = async (req, res) => {
     const payinSeq = await getNextSequence('payinId');
     const payinId = formatPayinId(payinSeq);
 
-    const requiredConfirmations = REQUIRED_CONFIRMATIONS[network] || 12;
-
     const payin = await Payin.create({
       payinId,
-      user: req.user.userId,
       userid: req.user.userid,
       currency,
       amount: parsedAmount,
@@ -67,7 +59,6 @@ exports.createPayin = async (req, res) => {
       address,
       status: 'pending',
       transactionType: 'payin',
-      requiredConfirmations,
       remark: `${currency} ${network} deposit`,
       exchangeRate,
       creditedAmount: receivedAmount,
@@ -99,7 +90,7 @@ function toNum(v) {
 exports.getPayinList = async (req, res) => {
   try {
     const { page = 1, limit = 20, status, network } = req.query;
-    const filter = { user: req.user.userId };
+    const filter = { userid: req.user.userid };
     if (status && ['pending', 'success', 'failed', 'reversed'].includes(status)) filter.status = status;
     if (network && ['TRC20', 'BEP20', 'SPAY'].includes(String(network).toUpperCase())) filter.network = String(network).toUpperCase();
 
@@ -132,7 +123,7 @@ exports.getPayinList = async (req, res) => {
 exports.getTransactions = async (req, res) => {
   try {
     const { page = 1, limit = 20, status, type, note, network } = req.query;
-    const filter = { user: req.user.userId };
+    const filter = { userid: req.user.userid };
     if (status && ['pending', 'success', 'failed', 'reversed'].includes(status)) filter.status = status;
     if (type && ['credit', 'debit'].includes(type)) filter.type = type;
     if (note && ['payin', 'payout', 'reversal'].includes(note)) filter.note = note;
@@ -192,7 +183,7 @@ exports.submitPayinTxHash = async (req, res) => {
 
     const cleanHash = String(txHash).trim();
 
-    const payin = await Payin.findOne({ payinId, user: req.user.userId });
+    const payin = await Payin.findOne({ payinId, userid: req.user.userid });
     if (!payin) {
       return res.status(404).json({ success: 'failed', msg: 'Payin not found' });
     }

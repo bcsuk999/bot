@@ -5,7 +5,7 @@ const User = require('../models/User');
 const Bank = require('../models/Bank');
 const simplypay = require('../services/simplypay');
 const { calculateBonus } = require('./adminBonusController');
-const { parseBalance, getCurrentBalance, getNextSequence, formatTrnId, formatPayinId } = require('../utils/helpers');
+const { parseBalance, getCurrentBalance, getNextSequence, formatTrnId, formatPayinId, getUserObjectId } = require('../utils/helpers');
 const logger = require('../utils/logger');
 
 // User creates INR deposit via SimplyPay
@@ -27,7 +27,6 @@ exports.createPayin = async (req, res) => {
 
     const payin = await Payin.create({
       payinId,
-      user: req.user.userId,
       userid: req.user.userid,
       currency: 'INR',
       amount: parsedAmount,
@@ -35,7 +34,6 @@ exports.createPayin = async (req, res) => {
       address: null,
       status: 'pending',
       transactionType: 'payin',
-      requiredConfirmations: 0,
       remark: 'INR deposit via SimplyPay',
       exchangeRate: 1,
       creditedAmount: parsedAmount,
@@ -58,7 +56,6 @@ exports.createPayin = async (req, res) => {
       const errMsg = apiRes.msg || apiRes.error || `SimplyPay error (code: ${apiRes.code})`;
       payin.status = 'failed';
       payin.remark = errMsg;
-      payin.failedAt = new Date();
       await payin.save();
       return res.status(400).json({ success: 'failed', msg: errMsg });
     }
@@ -105,7 +102,8 @@ exports.payinCallback = async (req, res) => {
     const FAILED_STATUSES = [-1, -2];
 
     if (SUCCESS_STATUSES.includes(orderStatus)) {
-      const currentBalance = await getCurrentBalance(payin.user);
+      const userObjId = await getUserObjectId(payin.userid);
+      const currentBalance = await getCurrentBalance(userObjId);
       const amount = parseBalance(payin.amount);
       const bonus = await calculateBonus(amount);
       const receivedAmount = amount + bonus;
@@ -116,7 +114,7 @@ exports.payinCallback = async (req, res) => {
 
       await Transaction.create({
         trnId,
-        user: payin.user,
+        user: userObjId,
         userid: payin.userid,
         amount: receivedAmount,
         type: 'credit',
@@ -132,8 +130,6 @@ exports.payinCallback = async (req, res) => {
       });
 
       payin.status = 'success';
-      payin.completedAt = new Date();
-      payin.detectedAmount = amount;
       payin.exchangeRate = 1;
       payin.creditedAmount = receivedAmount;
       payin.bonusAmount = bonus;
@@ -141,7 +137,6 @@ exports.payinCallback = async (req, res) => {
       await payin.save();
     } else if (FAILED_STATUSES.includes(orderStatus)) {
       payin.status = 'failed';
-      payin.failedAt = new Date();
       payin.remark = `SimplyPay status: ${orderStatus}`;
       await payin.save();
     }
