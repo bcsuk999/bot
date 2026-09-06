@@ -1,4 +1,5 @@
 const BonusConfig = require('../models/BonusConfig');
+const logger = require('../utils/logger');
 
 // Get current bonus config
 exports.getBonusConfig = async (req, res) => {
@@ -18,7 +19,7 @@ exports.getBonusConfig = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('getBonusConfig error:', err);
+    logger.error({ err }, 'getBonusConfig error');
     return res.status(500).json({ success: 'failed', msg: 'Failed to fetch bonus config' });
   }
 };
@@ -63,7 +64,7 @@ exports.updateBonusConfig = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('updateBonusConfig error:', err);
+    logger.error({ err }, 'updateBonusConfig error');
     return res.status(500).json({ success: 'failed', msg: 'Failed to update bonus config' });
   }
 };

@@ -1,6 +1,7 @@
 const dns = require('node:dns');
 try { dns.setServers(['8.8.8.8', '1.1.1.1']); } catch (_) {}
 const mongoose = require('mongoose');
+const logger = require('../utils/logger');
 
 const connectDB = async () => {
   try {
@@ -10,9 +11,9 @@ const connectDB = async () => {
       socketTimeoutMS: 45000,
       autoIndex: true,
     });
-    console.log('MongoDB connected successfully');
+    logger.info('MongoDB connected successfully');
   } catch (error) {
-    console.error('MongoDB connection error:', error);
+    logger.error({ error }, 'MongoDB connection error');
     process.exit(1);
   }
 };

@@ -1,8 +1,9 @@
 const Payin = require('../models/Payin');
 const Transaction = require('../models/Transaction');
-const Counter = require('../models/Counter');
 const DepositAddress = require('../models/DepositAddress');
 const { resolveRate } = require('./payinExchangeController');
+const { getNextSequence, formatPayinId } = require('../utils/helpers');
+const logger = require('../utils/logger');
 
 async function getDepositAddress(network) {
   try {
@@ -16,21 +17,6 @@ const REQUIRED_CONFIRMATIONS = {
   TRC20: 20,
   BEP20: 15,
 };
-
-async function getNextSequence(name) {
-  const counter = await Counter.findOneAndUpdate(
-    { _id: name },
-    { $inc: { seq: 1 } },
-    { returnDocument: 'after', upsert: true }
-  );
-  return counter.seq;
-}
-
-function formatPayinId(seq) {
-  const date = new Date();
-  const d = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
-  return `PAY${d}${String(seq).padStart(4, '0')}`;
-}
 
 exports.createPayin = async (req, res) => {
   try {
@@ -98,7 +84,7 @@ exports.createPayin = async (req, res) => {
       receivedAmount,
     });
   } catch (err) {
-    console.error('createPayin error:', err);
+    logger.error({ err }, 'createPayin error');
     if (err.code === 11000) {
       return res.status(409).json({ success: 'failed', msg: 'Duplicate payin, please retry' });
     }

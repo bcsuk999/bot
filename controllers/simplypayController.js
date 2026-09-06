@@ -1,40 +1,12 @@
 const Payin = require('../models/Payin');
 const Payout = require('../models/Payout');
 const Transaction = require('../models/Transaction');
-const Counter = require('../models/Counter');
 const User = require('../models/User');
 const Bank = require('../models/Bank');
 const simplypay = require('../services/simplypay');
 const { calculateBonus } = require('./adminBonusController');
-
-function parseBalance(v) {
-  if (v == null) return 0;
-  const n = parseFloat(v.toString());
-  return isNaN(n) ? 0 : n;
-}
-
-async function getCurrentBalance(userObjectId) {
-  const last = await Transaction.findOne({ user: userObjectId, status: 'success' }).sort({ createdAt: -1 }).lean();
-  if (last && last.balanceAfter != null) return parseBalance(last.balanceAfter);
-  return 0;
-}
-
-async function getNextSequence(name) {
-  const c = await Counter.findOneAndUpdate({ _id: name }, { $inc: { seq: 1 } }, { returnDocument: 'after', upsert: true });
-  return c.seq;
-}
-
-function formatPayinId(seq) {
-  const d = new Date();
-  const ds = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-  return `FPAY${ds}${String(seq).padStart(4, '0')}`;
-}
-
-function formatTrnId(seq) {
-  const d = new Date();
-  const ds = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-  return `TXN${ds}${String(seq).padStart(4, '0')}`;
-}
+const { parseBalance, getCurrentBalance, getNextSequence, formatTrnId, formatPayinId } = require('../utils/helpers');
+const logger = require('../utils/logger');
 
 // User creates INR deposit via SimplyPay
 exports.createPayin = async (req, res) => {
@@ -51,7 +23,7 @@ exports.createPayin = async (req, res) => {
     }
 
     const payinSeq = await getNextSequence('payinId');
-    const payinId = formatPayinId(payinSeq);
+    const payinId = formatPayinId(payinSeq, 'FPAY');
 
     const payin = await Payin.create({
       payinId,
@@ -106,7 +78,7 @@ exports.createPayin = async (req, res) => {
       orderNo: apiRes.data?.orderNo || null,
     });
   } catch (err) {
-    console.error('simplypay createPayin error:', err);
+    logger.error({ err }, 'simplypay createPayin error');
     return res.status(500).json({ success: 'failed', msg: err.message || 'Failed to create payin' });
   }
 };
@@ -117,7 +89,7 @@ exports.payinCallback = async (req, res) => {
     const body = req.body;
 
     if (!simplypay.verifySign(body)) {
-      console.error('SimplyPay callback signature mismatch');
+      logger.warn('SimplyPay callback signature mismatch');
       return res.status(200).json({ success: true });
     }
 
@@ -176,7 +148,7 @@ exports.payinCallback = async (req, res) => {
 
     return res.status(200).json({ success: true });
   } catch (err) {
-    console.error('SimplyPay payinCallback error:', err);
+    logger.error({ err }, 'SimplyPay payinCallback error');
     return res.status(200).json({ success: true });
   }
 };
@@ -228,7 +200,7 @@ exports.processPayout = async (req, res) => {
       orderNo: apiRes.data?.orderNo || null,
     });
   } catch (err) {
-    console.error('simplypay processPayout error:', err);
+    logger.error({ err }, 'simplypay processPayout error');
     return res.status(500).json({ success: 'failed', msg: 'Failed to process payout' });
   }
 };
@@ -239,7 +211,7 @@ exports.payoutCallback = async (req, res) => {
     const body = req.body;
 
     if (!simplypay.verifySign(body)) {
-      console.error('SimplyPay payout callback signature mismatch');
+      logger.warn('SimplyPay payout callback signature mismatch');
       return res.status(200).json({ success: true });
     }
 
@@ -297,7 +269,7 @@ exports.payoutCallback = async (req, res) => {
 
     return res.status(200).json({ success: true });
   } catch (err) {
-    console.error('SimplyPay payoutCallback error:', err);
+    logger.error({ err }, 'SimplyPay payoutCallback error');
     return res.status(200).json({ success: true });
   }
 };
@@ -311,7 +283,7 @@ exports.queryOrder = async (req, res) => {
     const apiRes = await simplypay.queryOrder(merOrderNo);
     return res.json({ success: true, data: apiRes.data || apiRes });
   } catch (err) {
-    console.error('simplypay queryOrder error:', err);
+    logger.error({ err }, 'simplypay queryOrder error');
     return res.status(500).json({ success: 'failed', msg: 'Failed to query order' });
   }
 };

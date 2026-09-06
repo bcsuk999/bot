@@ -3,6 +3,7 @@ const Transaction = require('../models/Transaction');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 require('../db/conn');
+const logger = require('../utils/logger');
 
 exports.login = async (req, res) => {
   try {
@@ -131,7 +132,7 @@ exports.listUsers = async (req, res) => {
       users: paged,
     });
   } catch (err) {
-    console.error('listUsers error:', err);
+    logger.error({ err }, 'listUsers error');
     return res.status(500).json({ success: 'failed', msg: 'Failed to fetch users' });
   }
 };

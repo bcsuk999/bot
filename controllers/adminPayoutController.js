@@ -1,43 +1,9 @@
 const Payout = require('../models/Payout');
 const Transaction = require('../models/Transaction');
-const Counter = require('../models/Counter');
 const User = require('../models/User');
 const Bank = require('../models/Bank');
-
-function parseBalance(v) {
-  if (v == null) return 0;
-  const n = parseFloat(v.toString());
-  return isNaN(n) ? 0 : n;
-}
-
-async function getCurrentBalance(userObjectId) {
-  const last = await Transaction.findOne({ user: userObjectId, status: 'success' })
-    .sort({ createdAt: -1 })
-    .lean();
-  if (last && last.balanceAfter != null) return parseBalance(last.balanceAfter);
-  return 0;
-}
-
-async function getNextSequence(name) {
-  const c = await Counter.findOneAndUpdate(
-    { _id: name },
-    { $inc: { seq: 1 } },
-    { returnDocument: 'after', upsert: true }
-  );
-  return c.seq;
-}
-
-function formatPayoutId(seq) {
-  const d = new Date();
-  const ds = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-  return `PAYOUT${ds}${String(seq).padStart(4, '0')}`;
-}
-
-function formatTrnId(seq) {
-  const d = new Date();
-  const ds = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-  return `TXN${ds}${String(seq).padStart(4, '0')}`;
-}
+const { parseBalance, getCurrentBalance, getNextSequence, formatTrnId, formatPayoutId } = require('../utils/helpers');
+const logger = require('../utils/logger');
 
 exports.listPayoutUsers = async (req, res) => {
   try {
@@ -105,7 +71,7 @@ exports.listPayoutUsers = async (req, res) => {
       users: result,
     });
   } catch (err) {
-    console.error('listPayoutUsers error:', err);
+    logger.error({ err }, 'listPayoutUsers error');
     return res.status(500).json({ success: 'failed', msg: 'Failed to fetch payout users' });
   }
 };
@@ -211,7 +177,7 @@ exports.createPayout = async (req, res) => {
       payouts,
     });
   } catch (err) {
-    console.error('createPayout error:', err);
+    logger.error({ err }, 'createPayout error');
     return res.status(500).json({ success: 'failed', msg: 'Failed to create payout orders' });
   }
 };
@@ -300,7 +266,7 @@ exports.approvePayout = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('approvePayout error:', err);
+    logger.error({ err }, 'approvePayout error');
     return res.status(500).json({ success: 'failed', msg: 'Failed to approve payout' });
   }
 };
@@ -370,7 +336,7 @@ exports.rejectPayout = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('rejectPayout error:', err);
+    logger.error({ err }, 'rejectPayout error');
     return res.status(500).json({ success: 'failed', msg: 'Failed to reject payout' });
   }
 };

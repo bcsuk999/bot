@@ -8,6 +8,7 @@ const userRouter = require('./routes/user');
 const adminRouter = require('./routes/admin');
 const simplypayController = require('./controllers/simplypayController');
 const connectDB = require('./db/conn');
+const logger = require('./utils/logger');
 
 const app = express();
 
@@ -64,5 +65,5 @@ app.use((req, res) => {
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  logger.info({ port: PORT }, 'Server running');
 });

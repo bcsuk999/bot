@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const logger = require('../utils/logger');
 
 const BASE_URL = process.env.SIMPLYPAY_BASE_URL || 'https://api.paysimply.net/api/v2';
 const APP_ID = process.env.SIMPLYPAY_APP_ID;
@@ -38,7 +39,7 @@ function generateSign(params, appSecret) {
   if (appSecret) {
     paramsString += `&key=${appSecret}`;
   }
-  console.log('SimplyPay signStr:', paramsString);
+  logger.debug('SimplyPay signStr generated');
   return crypto.createHash('sha256').update(paramsString, 'utf8').digest('hex');
 }
 
@@ -56,11 +57,11 @@ async function apiCall(path, body) {
     body: JSON.stringify(body),
   });
   const text = await res.text();
-  console.log('SimplyPay apiCall', path, 'status:', res.status, 'body:', text);
+  logger.info({ path, status: res.status }, 'SimplyPay apiCall');
   try {
     return JSON.parse(text);
   } catch (e) {
-    console.error('SimplyPay API non-JSON response from', url, 'status:', res.status, 'body:', text);
+    logger.error({ url, status: res.status }, 'SimplyPay API non-JSON response');
     return { code: -1, msg: `API returned non-JSON (status ${res.status})` };
   }
 }
@@ -77,8 +78,7 @@ async function createPaymentOrder({ merOrderNo, amount, returnUrl, notifyUrl, at
     extra: extra || {},
   };
   params.sign = generateSign(params, SECRET);
-  console.log('SimplyPay createPaymentOrder params:', JSON.stringify(params, null, 2));
-  console.log('SimplyPay SECRET loaded:', SECRET ? SECRET.substring(0, 4) + '...' : 'MISSING');
+  logger.debug({ merOrderNo, amount }, 'SimplyPay createPaymentOrder');
   return apiCall('/payment/order/create', params);
 }
 
@@ -106,11 +106,11 @@ async function queryOrder(merOrderNo) {
   const url = BASE_URL + '/payment/order/query?' + qs;
   const res = await fetch(url);
   const text = await res.text();
-  console.log('SimplyPay queryOrder status:', res.status, 'body:', text);
+  logger.info({ merOrderNo, status: res.status }, 'SimplyPay queryOrder');
   try {
     return JSON.parse(text);
   } catch (e) {
-    console.error('SimplyPay query non-JSON response from', url, 'status:', res.status, 'body:', text);
+    logger.error({ url, status: res.status }, 'SimplyPay query non-JSON response');
     return { code: -1, msg: `API returned non-JSON (status ${res.status})` };
   }
 }

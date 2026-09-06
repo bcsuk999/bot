@@ -1,30 +1,8 @@
 const Payin = require('../models/Payin');
 const Transaction = require('../models/Transaction');
-const Counter = require('../models/Counter');
 const { getRateFor } = require('./adminExchangeController');
-
-function formatTrnId(seq) {
-  const d = new Date();
-  const ds = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-  return `TXN${ds}${String(seq).padStart(4, '0')}`;
-}
-
-async function getNextSequence(name) {
-  const c = await Counter.findOneAndUpdate({ _id: name }, { $inc: { seq: 1 } }, { returnDocument: 'after', upsert: true });
-  return c.seq;
-}
-
-function parseBalance(v) {
-  if (v == null) return 0;
-  const n = parseFloat(v.toString());
-  return isNaN(n) ? 0 : n;
-}
-
-async function getCurrentBalance(userObjectId) {
-  const last = await Transaction.findOne({ user: userObjectId, status: 'success' }).sort({ createdAt: -1 }).lean();
-  if (last && last.balanceAfter != null) return parseBalance(last.balanceAfter);
-  return 0;
-}
+const { parseBalance, getCurrentBalance, getNextSequence, formatTrnId } = require('../utils/helpers');
+const logger = require('../utils/logger');
 
 // List payins with pagination + filters (userid, status, network)
 exports.adminListPayins = async (req, res) => {
@@ -233,7 +211,7 @@ exports.adminApproveTransaction = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('adminApproveTransaction error:', err);
+    logger.error({ err }, 'adminApproveTransaction error');
     res.status(500).json({ success: 'failed', msg: 'Failed to approve transaction' });
   }
 };
