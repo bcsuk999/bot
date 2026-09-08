@@ -34,6 +34,7 @@ const {
 } = require('../controllers/adminPayoutController');
 const simplypayController = require('../controllers/simplypayController');
 const { getBonusConfig, updateBonusConfig } = require('../controllers/adminBonusController');
+const { getSettings, updateSettings } = require('../controllers/adminSettingsController');
 const auth = require('../middleware/auth');
 const requireAdmin = require('../middleware/requireAdmin');
 
@@ -82,5 +83,9 @@ router.get('/simplypay/query', auth, requireAdmin, simplypayController.queryOrde
 // INR bonus config (percentage + flat)
 router.get('/bonus-config', auth, requireAdmin, getBonusConfig);
 router.post('/bonus-config', auth, requireAdmin, updateBonusConfig);
+
+// App settings (telegram links, etc.)
+router.get('/settings', auth, requireAdmin, getSettings);
+router.put('/settings', auth, requireAdmin, updateSettings);
 
 module.exports = router;

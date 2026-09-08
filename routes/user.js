@@ -6,6 +6,7 @@ const { createPayin, getPayinList, getTransactions, getBalance, submitPayinTxHas
 const { getPayinExchangeRate } = require('../controllers/payinExchangeController');
 const { togglePayoutStatus, getPayoutSwitch } = require('../controllers/payoutController');
 const { getBonusConfig } = require('../controllers/adminBonusController');
+const homeController = require('../controllers/homeController');
 const simplypayController = require('../controllers/simplypayController');
 const auth = require('../middleware/auth');
 const optionalAuth = require('../middleware/optionalAuth');
@@ -24,6 +25,9 @@ router.post('/payin/submit-tx', auth, submitPayinTxHash);
 router.get('/payins', auth, getPayinList);
 router.get('/transactions', auth, getTransactions);
 router.get('/balance', auth, getBalance);
+
+// Home dashboard
+router.get('/home', auth, homeController.getHome);
 
 // Bank routes - auth required, multiple banks per user
 router.post('/bankadd', auth, addBank);

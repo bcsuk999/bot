@@ -1,5 +1,4 @@
 const DepositAddress = require('../models/DepositAddress');
-const ExchangeRate = require('../models/ExchangeRate');
 const { getPagination } = require('../utils/helpers');
 
 function validateAddress(network, address) {
@@ -38,24 +37,9 @@ exports.seedDefaultAddresses = async (req, res) => {
   }
 };
 
-async function syncExchangeRate(currency, network, rate, updatedBy) {
-  if (rate == null) return;
-  const pr = Number(rate);
-  if (!isFinite(pr) || pr <= 0) return;
-  // same for every channel - always global (network null)
-  const netVal = null;
-  await ExchangeRate.updateMany({ currency, network: null, isActive: true }, { $set: { isActive: false } });
-  await ExchangeRate.updateMany({ currency, network: { $in: ['TRC20', 'BEP20'] }, isActive: true }, { $set: { isActive: false } });
-  let doc = await ExchangeRate.findOne({ currency, network: null });
-  if (doc) {
-    doc.rate = pr;
-    doc.isActive = true;
-    doc.updatedBy = updatedBy;
-    await doc.save();
-  } else {
-    await ExchangeRate.create({ currency, network: null, rate: pr, isActive: true, updatedBy });
-  }
-}
+// Note: Exchange rate is a single global config (network: null) shared across all
+// USDT addresses. Manage it only via /api/admin/exchange-rates (change + enable/disable).
+// The rate is intentionally NOT settable through deposit-address create/update.
 
 exports.listDepositAddresses = async (req, res) => {
   try {
@@ -79,7 +63,7 @@ exports.listDepositAddresses = async (req, res) => {
 
 exports.createDepositAddress = async (req, res) => {
   try {
-    let { currency, network, address, label, isActive, exchangeRate, rate } = req.body;
+    let { currency, network, address, label, isActive } = req.body;
     currency = currency ? String(currency).toUpperCase() : 'USDT';
     if (!network || !address) return res.status(400).json({ success: 'failed', msg: 'network and address are required' });
     network = String(network).toUpperCase().trim();
@@ -107,18 +91,7 @@ exports.createDepositAddress = async (req, res) => {
       createdBy: req.user.userid,
     });
 
-    // allow changing exchange rate along with address (global for every channel)
-    const rateVal = exchangeRate != null ? exchangeRate : rate;
-    if (rateVal != null) {
-      await syncExchangeRate(currency, network, rateVal, req.user.userId);
-    }
-    let exchangeRateDoc = null;
-    if (rateVal != null) {
-      exchangeRateDoc = await ExchangeRate.findOne({ currency, network: null, isActive: true }).lean() || await ExchangeRate.findOne({ currency, isActive: true }).lean();
-      if (exchangeRateDoc && exchangeRateDoc.rate != null) exchangeRateDoc.rate = parseFloat(exchangeRateDoc.rate.toString());
-    }
-
-    res.status(201).json({ success: true, msg: 'Deposit address created', address: doc, exchangeRate: exchangeRateDoc });
+    res.status(201).json({ success: true, msg: 'Deposit address created', address: doc });
   } catch (err) {
     if (err.code === 11000) {
       const field = Object.keys(err.keyPattern || {})[0] || 'address';
@@ -131,7 +104,7 @@ exports.createDepositAddress = async (req, res) => {
 exports.updateDepositAddress = async (req, res) => {
   try {
     const { id } = req.params;
-    let { network, address, label, isActive, currency, exchangeRate, rate } = req.body;
+    let { network, address, label, isActive, currency } = req.body;
     const doc = await DepositAddress.findById(id);
     if (!doc) return res.status(404).json({ success: 'failed', msg: 'Deposit address not found' });
 
@@ -164,16 +137,7 @@ exports.updateDepositAddress = async (req, res) => {
 
     await doc.save();
 
-    const rateVal = exchangeRate != null ? exchangeRate : rate;
-    let exchangeRateDoc = null;
-    if (rateVal != null) {
-      await syncExchangeRate(doc.currency, doc.network, rateVal, req.user.userId);
-      exchangeRateDoc = await ExchangeRate.findOne({ currency: doc.currency, network: null, isActive: true }).lean() || await ExchangeRate.findOne({ currency: doc.currency, isActive: true }).lean();
-      if (exchangeRateDoc && exchangeRateDoc.rate != null) exchangeRateDoc.rate = parseFloat(exchangeRateDoc.rate.toString());
-    }
-
     const resp = { success: true, msg: 'Deposit address updated', address: doc };
-    if (exchangeRateDoc) resp.exchangeRate = exchangeRateDoc;
     res.json(resp);
   } catch (err) {
     if (err.code === 11000) return res.status(422).json({ success: 'failed', msg: 'Active address for this network already exists' });

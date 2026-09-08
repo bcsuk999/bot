@@ -1,5 +1,6 @@
 const ExchangeRate = require('../models/ExchangeRate');
 const { getPagination } = require('../utils/helpers');
+const { refreshExchangeRate } = require('../services/configService');
 
 async function getRateFor(currency = 'USDT', network = null) {
   // Exchange rate is same for every channel (global) - ignore network
@@ -94,6 +95,7 @@ exports.upsertExchangeRate = async (req, res) => {
     const out = doc.toObject({ getters: true });
     out.rate = parseFloat(out.rate.toString());
 
+    refreshExchangeRate();
     res.status(doc ? 200 : 201).json({ success: true, msg: 'Exchange rate saved', rate: out });
   } catch (err) {
     if (err.code === 11000) return res.status(422).json({ success: 'failed', msg: 'Active rate for this network already exists' });
@@ -134,6 +136,7 @@ exports.updateExchangeRate = async (req, res) => {
 
     const out = doc.toObject({ getters: true });
     out.rate = parseFloat(out.rate.toString());
+    refreshExchangeRate();
     res.json({ success: true, msg: 'Exchange rate updated', rate: out });
   } catch (err) {
     if (err.code === 11000) return res.status(422).json({ success: 'failed', msg: 'Active rate for this network already exists' });
@@ -147,6 +150,7 @@ exports.deleteExchangeRate = async (req, res) => {
     const doc = await ExchangeRate.findById(id);
     if (!doc) return res.status(404).json({ success: 'failed', msg: 'Exchange rate not found' });
     await ExchangeRate.findByIdAndDelete(id);
+    refreshExchangeRate();
     res.json({ success: true, msg: 'Exchange rate deleted' });
   } catch (err) {
     res.status(500).json({ success: 'failed', msg: 'Failed to delete exchange rate' });

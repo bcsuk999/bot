@@ -1,5 +1,6 @@
 const BonusConfig = require('../models/BonusConfig');
 const logger = require('../utils/logger');
+const { refreshInrBonus } = require('../services/configService');
 
 // Get current bonus config
 exports.getBonusConfig = async (req, res) => {
@@ -52,6 +53,7 @@ exports.updateBonusConfig = async (req, res) => {
 
     config.updatedBy = req.user.userId;
     await config.save();
+    refreshInrBonus();
 
     return res.json({
       success: true,

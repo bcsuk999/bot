@@ -13,9 +13,21 @@ All admin payin endpoints require `Authorization: Bearer <admin_jwt>` + `role: a
 
 ---
 
-## Deposit Address Config (Admin)
+## Deposit Config (Admin)
 
-Manage USDT deposit addresses per network. When user calls `POST /api/user/payin` the backend uses the active address for that network (`DepositAddress` collection, **no fallback** — if no active address, payin returns `400 {success:'failed',msg:'Deposit address not configured for BEP20'}`). Deleted addresses stay deleted (bug fixed: previously `GET` auto-seeded 2 defaults when count was 0).
+There are **two** deposit configs: **USDT** and **INR**.
+
+- **USDT** has two sub-configs:
+  1. **Addresses** (`/api/admin/deposit-addresses`) — per network (`TRC20`/`BEP20`).
+  2. **A single exchange rate** (`/api/admin/exchange-rates`) — shared across all USDT addresses, admin can change later and enable/disable.
+- **INR** has a **bonus config** (`/api/admin/bonus-config`) — every INR payin receives a bonus (`bonusPercentage%` + `bonusFlat` per order).
+
+---
+### USDT — Deposit Address Config (Admin)
+
+Manage USDT deposit addresses per network. When user calls `POST /api/user/payin` the backend uses the active address for that network (`DepositAddress` collection, **no fallback** — if no active address, payin returns `400 {success:'failed',msg:'Deposit address not configured for BEP20'}`). Deleted addresses stay deleted.
+
+Exchange rate is **not** set here — use `/api/admin/exchange-rates` (single global rate for all USDT addresses).
 
 ### List Deposit Addresses
 #### Endpoint: `GET /api/admin/deposit-addresses`
@@ -46,12 +58,12 @@ Manage USDT deposit addresses per network. When user calls `POST /api/user/payin
 - **Headers:** `Authorization: Bearer <admin_token>`, `Content-Type: application/json`
 - **Request Body:**
   ```json
-  { "network": "TRC20", "address": "TXYZ...", "label": "Main TRC20", "isActive": true, "exchangeRate": 90 }
+  { "network": "TRC20", "address": "TXYZ...", "label": "Main TRC20", "isActive": true }
   ```
-  `currency` defaults to `USDT` (only USDT allowed). If `isActive:true`, previous active for same `USDT+network` is auto-deactivated (unique active per network). **You can change exchange rate along with address** via `exchangeRate` (or `rate`) — it upserts `ExchangeRate` for that `currency+network` and returns `exchangeRate` in response.
+  `currency` defaults to `USDT` (only USDT allowed). If `isActive:true`, previous active for same `USDT+network` is auto-deactivated (unique active per network). Exchange rate is **not** accepted here — it is a single global rate managed via `/api/admin/exchange-rates`.
 - **Response (201):**
   ```json
-  { "success": true, "msg": "Deposit address created", "address": { "_id":"...", "network":"TRC20", "address":"TXYZ...", "isActive": true }, "exchangeRate": { "currency":"USDT", "network":"TRC20", "rate":90 } }
+  { "success": true, "msg": "Deposit address created", "address": { "_id":"...", "network":"TRC20", "address":"TXYZ...", "isActive": true } }
   ```
 - **Errors:**
   - 400: `{ "success": "failed", "msg": "network and address are required" }`
@@ -60,9 +72,8 @@ Manage USDT deposit addresses per network. When user calls `POST /api/user/payin
 
 ### Update Deposit Address
 #### Endpoint: `PATCH /api/admin/deposit-addresses/:id`
-- **Request Body (all optional):** `{ "network": "BEP20", "address": "0x...", "label": "new", "isActive": false, "currency": "USDT", "exchangeRate": 95 }`
-- If `exchangeRate` (or `rate`) provided, it also upserts the `ExchangeRate` for that `currency+network`.
-- **Response (200):** `{ "success": true, "msg": "Deposit address updated", "address": {...}, "exchangeRate": {...} }`
+- **Request Body (all optional):** `{ "network": "BEP20", "address": "0x...", "label": "new", "isActive": false, "currency": "USDT" }`
+- **Response (200):** `{ "success": true, "msg": "Deposit address updated", "address": {...} }`
 - **Errors:** 404 not found, 400 invalid format, 422 duplicate
 
 ### Toggle Active
@@ -183,9 +194,9 @@ Manage USDT deposit addresses per network. When user calls `POST /api/user/payin
 | `referenceId` | String | `PAY...` |
 | `createdAt` / `updatedAt` | Date | |
 
-## Exchange Rate Config (Admin)
+## Exchange Rate Config (Admin) — USDT
 
-Balance increase = `payin amount * exchangeRate`. Rate configurable per `USDT` global or per network (`TRC20`/`BEP20`), fallback `1`.
+Single rate shared across **all** USDT deposit addresses: balance increase = `payin amount * exchangeRate`. Admin can change the rate or enable/disable it via `isActive` (`/exchange-rates`). Rate resolution uses global active (`network: null`), else any active, else fallback `1` (`resolveRate`/`getRateFor`).
 
 ### List Exchange Rates
 #### Endpoint: `GET /api/admin/exchange-rates`
@@ -238,7 +249,7 @@ All list endpoints return `{ count: totalDocs, page, limit, totalPages, ... }` w
 
 ## INR Bonus Config (Admin)
 
-Admin can configure bonus rates for INR deposits. Bonus = `(amount × bonusPercentage / 100) + bonusFlat`. Applied automatically on SimplyPay webhook callback.
+Bonus applied to **every** INR payin. Bonus = `(amount × bonusPercentage / 100) + bonusFlat` (e.g. 5.2% + 6 flat per order). Applied automatically on SimplyPay webhook callback. `isActive:false` disables the bonus (bonus = 0).
 
 ### Get Bonus Config
 
