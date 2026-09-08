@@ -1,5 +1,6 @@
 const DepositAddress = require('../models/DepositAddress');
 const ExchangeRate = require('../models/ExchangeRate');
+const { getPagination } = require('../utils/helpers');
 
 function validateAddress(network, address) {
   if (network === 'TRC20') {
@@ -63,9 +64,7 @@ exports.listDepositAddresses = async (req, res) => {
     if (network && ['TRC20', 'BEP20'].includes(String(network).toUpperCase())) filter.network = String(network).toUpperCase();
     if (isActive !== undefined) filter.isActive = String(isActive) === 'true';
 
-    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
-    const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
-    const skip = (pageNum - 1) * limitNum;
+    const { pageNum, limitNum, skip } = getPagination(page, limit);
 
     const [items, total] = await Promise.all([
       DepositAddress.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean(),

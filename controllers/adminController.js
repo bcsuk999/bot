@@ -4,6 +4,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 require('../db/conn');
 const logger = require('../utils/logger');
+const { getPagination } = require('../utils/helpers');
 
 exports.login = async (req, res) => {
   try {
@@ -116,8 +117,7 @@ exports.listUsers = async (req, res) => {
     if (sortBalance === 'asc') result.sort((a, b) => a.balance - b.balance);
     else if (sortBalance === 'desc') result.sort((a, b) => b.balance - a.balance);
 
-    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
-    const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+    const { pageNum, limitNum } = getPagination(page, limit);
     const total = result.length;
     const start = (pageNum - 1) * limitNum;
     const paged = result.slice(start, start + limitNum);

@@ -1,8 +1,8 @@
 const Payin = require('../models/Payin');
 const Transaction = require('../models/Transaction');
 const { getRateFor } = require('./adminExchangeController');
-const { calculateBonus } = require('./adminBonusController');
-const { parseBalance, getCurrentBalance, getNextSequence, formatTrnId, getUserObjectId } = require('../utils/helpers');
+const { approvePayin } = require('../services/payinService');
+const { parseBalance, getCurrentBalance, getNextSequence, formatTrnId, toNum, getPagination, serializeTransaction } = require('../utils/helpers');
 const logger = require('../utils/logger');
 
 // List payins with pagination + filters (userid, status, network)
@@ -21,9 +21,7 @@ exports.adminListPayins = async (req, res) => {
       filter.payinId = txn.referenceId;
     }
 
-    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
-    const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
-    const skip = (pageNum - 1) * limitNum;
+    const { pageNum, limitNum, skip } = getPagination(page, limit);
 
     const [payinsRaw, count] = await Promise.all([
       Payin.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean({ getters: true }),
@@ -40,7 +38,7 @@ exports.adminListPayins = async (req, res) => {
     }
     const payins = payinsRaw.map((p) => ({
       ...p,
-      amount: p.amount != null ? parseFloat(p.amount.toString()) : p.amount,
+      amount: toNum(p.amount),
       trnId: trnMap[p.payinId] || null,
     }));
     res.json({ success: true, msg: 'Payins fetched', count, page: pageNum, limit: limitNum, totalPages: Math.ceil(count / limitNum), payins });
@@ -61,34 +59,14 @@ exports.adminListTransactions = async (req, res) => {
     if (note && ['payin', 'payout', 'reversal'].includes(note)) filter.note = note;
     if (network && ['TRC20', 'BEP20'].includes(String(network).toUpperCase())) filter.network = String(network).toUpperCase();
 
-    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
-    const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
-    const skip = (pageNum - 1) * limitNum;
+    const { pageNum, limitNum, skip } = getPagination(page, limit);
 
     const [txns, count] = await Promise.all([
       Transaction.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean({ getters: true }),
       Transaction.countDocuments(filter),
     ]);
 
-    const transactions = txns.map((t) => ({
-      trnId: t.trnId,
-      userid: t.userid,
-      user: t.user,
-      amount: t.amount ? parseFloat(t.amount.toString()) : t.amount,
-      type: t.type,
-      note: t.note,
-      remark: t.remark,
-      balanceAfter: t.balanceAfter ? parseFloat(t.balanceAfter.toString()) : t.balanceAfter,
-      status: t.status,
-      exchangeRate: t.exchangeRate != null ? parseFloat(t.exchangeRate.toString()) : null,
-      creditedAmount: t.creditedAmount != null ? parseFloat(t.creditedAmount.toString()) : null,
-      referenceId: t.referenceId,
-      network: t.network,
-      currency: t.currency,
-      txHash: t.txHash,
-      createdAt: t.createdAt,
-      updatedAt: t.updatedAt,
-    }));
+    const transactions = txns.map((t) => serializeTransaction(t));
 
     res.json({ success: true, msg: 'Transactions fetched', count, page: pageNum, limit: limitNum, totalPages: Math.ceil(count / limitNum), transactions });
   } catch (err) {
@@ -106,31 +84,13 @@ exports.adminGetTransactionByTrnId = async (req, res) => {
     if (payin) {
       payin = {
         ...payin,
-        amount: payin.amount != null ? parseFloat(payin.amount.toString()) : payin.amount,
+        amount: toNum(payin.amount),
       };
     }
     res.json({
       success: true,
       msg: 'Transaction fetched',
-      transaction: {
-        trnId: txn.trnId,
-        amount: parseFloat(txn.amount.toString()),
-        type: txn.type,
-        note: txn.note,
-        remark: txn.remark,
-        balanceAfter: parseFloat(txn.balanceAfter.toString()),
-        status: txn.status,
-        exchangeRate: txn.exchangeRate != null ? parseFloat(txn.exchangeRate.toString()) : null,
-        creditedAmount: txn.creditedAmount != null ? parseFloat(txn.creditedAmount.toString()) : null,
-        userid: txn.userid,
-        user: txn.user,
-        referenceId: txn.referenceId,
-        network: txn.network,
-        currency: txn.currency,
-        txHash: txn.txHash,
-        createdAt: txn.createdAt,
-        updatedAt: txn.updatedAt,
-      },
+      transaction: serializeTransaction(txn),
       payin,
     });
   } catch (err) {
@@ -148,79 +108,15 @@ exports.adminApproveTransaction = async (req, res) => {
     if (!payin) return res.status(404).json({ success: 'failed', msg: 'Payin not found' });
     if (payin.status !== 'pending') return res.status(400).json({ success: 'failed', msg: `Cannot approve, payin status is ${payin.status}` });
 
-    const userObjId = await getUserObjectId(payin.userid);
-    const currentBalance = await getCurrentBalance(userObjId);
-    const amount = parseBalance(payin.amount);
-
-    const isInr = payin.currency === 'INR' || payin.network === 'SPAY';
-
-    let rate = 1;
-    if (!isInr && overrideRate != null) {
-      const pr = Number(overrideRate);
-      if (!isFinite(pr) || pr <= 0) return res.status(400).json({ success: 'failed', msg: 'Invalid exchangeRate' });
-      rate = pr;
-    } else if (!isInr) {
-      rate = await getRateFor(payin.currency || 'USDT', payin.network || null);
-    }
-
-    let bonus = 0;
-    let creditedAmount = amount * rate;
-    if (isInr) {
-      bonus = await calculateBonus(amount);
-      creditedAmount = amount + bonus;
-    }
-    const newBalance = currentBalance + creditedAmount;
-
-    const seq = await getNextSequence('transactionId');
-    const trnId = formatTrnId(seq);
-
-    const transaction = await Transaction.create({
-      trnId,
-      user: userObjId,
-      userid: payin.userid,
-      amount: isInr ? creditedAmount : amount,
-      type: 'credit',
-      note: 'payin',
-      remark: remark ? String(remark).trim() : `${isInr ? 'INR' : payin.network} deposit`,
-      balanceAfter: newBalance,
-      status: 'success',
-      referenceId: payin.payinId,
-      network: isInr ? 'INR' : payin.network,
-      currency: payin.currency,
-      exchangeRate: rate,
-      creditedAmount,
-      txHash: txHash ? String(txHash).trim() : null,
-    });
-
-    payin.status = 'success';
-    if (txHash) payin.txHash = String(txHash).trim();
-    if (remark) payin.remark = String(remark).trim();
-    payin.exchangeRate = rate;
-    payin.creditedAmount = creditedAmount;
-    if (isInr) {
-      payin.bonusAmount = bonus;
-      payin.receivedAmount = creditedAmount;
-    }
-    await payin.save();
+    const transaction = await approvePayin(payin, { overrideRate, txHash, remark });
 
     res.json({
       success: true,
       msg: 'Payin approved',
-      transaction: {
-        trnId: transaction.trnId,
-        amount: parseFloat(transaction.amount.toString()),
-        type: transaction.type,
-        note: transaction.note,
-        remark: transaction.remark,
-        balanceAfter: parseFloat(transaction.balanceAfter.toString()),
-        status: transaction.status,
-        exchangeRate: transaction.exchangeRate != null ? parseFloat(transaction.exchangeRate.toString()) : null,
-        creditedAmount: transaction.creditedAmount != null ? parseFloat(transaction.creditedAmount.toString()) : null,
-        createdAt: transaction.createdAt,
-        updatedAt: transaction.updatedAt,
-      },
+      transaction: serializeTransaction(transaction),
     });
   } catch (err) {
+    if (err.status) return res.status(err.status).json({ success: 'failed', msg: err.message });
     logger.error({ err }, 'adminApproveTransaction error');
     res.status(500).json({ success: 'failed', msg: 'Failed to approve transaction' });
   }
@@ -245,7 +141,7 @@ exports.adminRejectTransaction = async (req, res) => {
       msg: 'Payin rejected',
       payin: {
         payinId: payin.payinId,
-        amount: parseFloat(payin.amount.toString()),
+        amount: toNum(payin.amount),
         status: payin.status,
         remark: payin.remark,
       },
@@ -293,7 +189,7 @@ exports.adminReverseTransaction = async (req, res) => {
       referenceId: original.trnId,
       network: original.network,
       currency: original.currency,
-      exchangeRate: original.exchangeRate != null ? parseBalance(original.exchangeRate) : null,
+      exchangeRate: toNum(original.exchangeRate),
       creditedAmount: credited,
     });
 
@@ -313,17 +209,7 @@ exports.adminReverseTransaction = async (req, res) => {
       success: true,
       msg: 'Transaction reversed',
       original: { trnId: original.trnId, status: original.status },
-      reversal: {
-        trnId: reversal.trnId,
-        amount: parseFloat(reversal.amount.toString()),
-        type: reversal.type,
-        note: reversal.note,
-        remark: reversal.remark,
-        balanceAfter: parseFloat(reversal.balanceAfter.toString()),
-        status: reversal.status,
-        createdAt: reversal.createdAt,
-        updatedAt: reversal.updatedAt,
-      },
+      reversal: serializeTransaction(reversal),
     });
   } catch (err) {
     res.status(500).json({ success: 'failed', msg: 'Failed to reverse transaction' });

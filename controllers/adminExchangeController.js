@@ -1,4 +1,5 @@
 const ExchangeRate = require('../models/ExchangeRate');
+const { getPagination } = require('../utils/helpers');
 
 async function getRateFor(currency = 'USDT', network = null) {
   // Exchange rate is same for every channel (global) - ignore network
@@ -24,9 +25,7 @@ exports.listExchangeRates = async (req, res) => {
     }
     if (isActive !== undefined) filter.isActive = String(isActive) === 'true';
 
-    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
-    const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
-    const skip = (pageNum - 1) * limitNum;
+    const { pageNum, limitNum, skip } = getPagination(page, limit);
 
     const [items, count] = await Promise.all([
       ExchangeRate.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(limitNum).lean({ getters: true }),

@@ -8,6 +8,41 @@ function parseBalance(v) {
   return isNaN(n) ? 0 : n;
 }
 
+function toNum(v) {
+  if (v == null) return v;
+  const n = typeof v === 'object' && v.toString ? parseFloat(v.toString()) : Number(v);
+  return isNaN(n) ? v : n;
+}
+
+function serializeTransaction(t) {
+  return {
+    trnId: t.trnId,
+    userid: t.userid,
+    user: t.user,
+    amount: toNum(t.amount),
+    type: t.type,
+    note: t.note,
+    remark: t.remark,
+    balanceAfter: toNum(t.balanceAfter),
+    status: t.status,
+    exchangeRate: toNum(t.exchangeRate),
+    creditedAmount: toNum(t.creditedAmount),
+    referenceId: t.referenceId,
+    network: t.network,
+    currency: t.currency,
+    txHash: t.txHash,
+    createdAt: t.createdAt,
+    updatedAt: t.updatedAt,
+  };
+}
+
+function getPagination(page = 1, limit = 20, maxLimit = 100) {
+  const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+  const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), maxLimit);
+  const skip = (pageNum - 1) * limitNum;
+  return { pageNum, limitNum, skip };
+}
+
 async function getCurrentBalance(userObjectId) {
   const last = await Transaction.findOne({ user: userObjectId, status: 'success' }).sort({ createdAt: -1 }).lean();
   if (last && last.balanceAfter != null) return parseBalance(last.balanceAfter);
@@ -49,6 +84,9 @@ function formatPayoutId(seq) {
 
 module.exports = {
   parseBalance,
+  toNum,
+  serializeTransaction,
+  getPagination,
   getCurrentBalance,
   getUserObjectId,
   getNextSequence,

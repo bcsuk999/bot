@@ -2,16 +2,14 @@ const Payout = require('../models/Payout');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
 const Bank = require('../models/Bank');
-const { parseBalance, getCurrentBalance, getNextSequence, formatTrnId, formatPayoutId } = require('../utils/helpers');
+const { parseBalance, getCurrentBalance, getNextSequence, formatTrnId, formatPayoutId, getPagination, toNum } = require('../utils/helpers');
 const logger = require('../utils/logger');
 
 exports.listPayoutUsers = async (req, res) => {
   try {
     const { page = 1, limit = 20 } = req.query;
 
-    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
-    const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
-    const skip = (pageNum - 1) * limitNum;
+    const { pageNum, limitNum, skip } = getPagination(page, limit);
 
     const [users, count] = await Promise.all([
       User.find({ withdrawal: true, status: 'active', role: 'user' })
@@ -159,7 +157,7 @@ exports.createPayout = async (req, res) => {
 
       payouts.push({
         payoutId: payout.payoutId,
-        amount: parseFloat(payout.amount.toString()),
+        amount: toNum(payout.amount),
         status: payout.status,
         bankName: payout.bankName,
         holderName: payout.holderName,
@@ -191,9 +189,7 @@ exports.listPayouts = async (req, res) => {
     if (status && ['pending', 'success', 'failed'].includes(status)) filter.status = status;
     if (payoutId) filter.payoutId = payoutId;
 
-    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
-    const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
-    const skip = (pageNum - 1) * limitNum;
+    const { pageNum, limitNum, skip } = getPagination(page, limit);
 
     const [payoutsRaw, count] = await Promise.all([
       Payout.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean({ getters: true }),
@@ -203,7 +199,7 @@ exports.listPayouts = async (req, res) => {
     const payouts = payoutsRaw.map((p) => ({
       payoutId: p.payoutId,
       userid: p.userid,
-      amount: p.amount != null ? parseFloat(p.amount.toString()) : p.amount,
+      amount: toNum(p.amount),
       status: p.status,
       bankName: p.bankName,
       holderName: p.holderName,
@@ -258,7 +254,7 @@ exports.approvePayout = async (req, res) => {
       msg: 'Payout approved',
       payout: {
         payoutId: payout.payoutId,
-        amount: parseFloat(payout.amount.toString()),
+        amount: toNum(payout.amount),
         status: payout.status,
         remark: payout.remark,
         trnId: payout.trnId,
@@ -304,7 +300,7 @@ exports.rejectPayout = async (req, res) => {
       }
     }
 
-    const refundAmount = parseFloat(payout.amount.toString());
+    const refundAmount = toNum(payout.amount);
     const currentBalance = await getCurrentBalance(payout.user);
     const newBalance = currentBalance + refundAmount;
 
@@ -329,7 +325,7 @@ exports.rejectPayout = async (req, res) => {
       msg: 'Payout rejected',
       payout: {
         payoutId: payout.payoutId,
-        amount: parseFloat(payout.amount.toString()),
+        amount: toNum(payout.amount),
         status: payout.status,
         remark: payout.remark,
         failedAt: payout.failedAt,

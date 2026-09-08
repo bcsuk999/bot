@@ -2,10 +2,10 @@ const Payin = require('../models/Payin');
 const Payout = require('../models/Payout');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
-const Bank = require('../models/Bank');
 const simplypay = require('../services/simplypay');
 const { calculateBonus } = require('./adminBonusController');
-const { parseBalance, getCurrentBalance, getNextSequence, formatTrnId, formatPayinId, getUserObjectId } = require('../utils/helpers');
+const { getCurrentBalance, getNextSequence, formatTrnId, formatPayinId } = require('../utils/helpers');
+const { approvePayin } = require('../services/payinService');
 const logger = require('../utils/logger');
 
 // User creates INR deposit via SimplyPay
@@ -102,39 +102,7 @@ exports.payinCallback = async (req, res) => {
     const FAILED_STATUSES = [-1, -2];
 
     if (SUCCESS_STATUSES.includes(orderStatus)) {
-      const userObjId = await getUserObjectId(payin.userid);
-      const currentBalance = await getCurrentBalance(userObjId);
-      const amount = parseBalance(payin.amount);
-      const bonus = await calculateBonus(amount);
-      const receivedAmount = amount + bonus;
-      const newBalance = currentBalance + receivedAmount;
-
-      const seq = await getNextSequence('transactionId');
-      const trnId = formatTrnId(seq);
-
-      await Transaction.create({
-        trnId,
-        user: userObjId,
-        userid: payin.userid,
-        amount: receivedAmount,
-        type: 'credit',
-        note: 'payin',
-        remark: bonus > 0 ? `INR deposit via SimplyPay + ${bonus} bonus` : 'INR deposit via SimplyPay',
-        balanceAfter: newBalance,
-        status: 'success',
-        referenceId: payin.payinId,
-        network: 'INR',
-        currency: 'INR',
-        exchangeRate: 1,
-        creditedAmount: receivedAmount,
-      });
-
-      payin.status = 'success';
-      payin.exchangeRate = 1;
-      payin.creditedAmount = receivedAmount;
-      payin.bonusAmount = bonus;
-      payin.receivedAmount = receivedAmount;
-      await payin.save();
+      await approvePayin(payin);
     } else if (FAILED_STATUSES.includes(orderStatus)) {
       payin.status = 'failed';
       payin.remark = `SimplyPay status: ${orderStatus}`;

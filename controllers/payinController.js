@@ -2,7 +2,7 @@ const Payin = require('../models/Payin');
 const Transaction = require('../models/Transaction');
 const DepositAddress = require('../models/DepositAddress');
 const { resolveRate } = require('./payinExchangeController');
-const { getNextSequence, formatPayinId } = require('../utils/helpers');
+const { getNextSequence, formatPayinId, toNum, getPagination, getCurrentBalance } = require('../utils/helpers');
 const logger = require('../utils/logger');
 
 async function getDepositAddress(network) {
@@ -83,10 +83,6 @@ exports.createPayin = async (req, res) => {
   }
 };
 
-function toNum(v) {
-  if (v == null) return v;
-  return typeof v === 'object' && v.toString ? parseFloat(v.toString()) : Number(v);
-}
 exports.getPayinList = async (req, res) => {
   try {
     const { page = 1, limit = 20, status, network } = req.query;
@@ -94,9 +90,7 @@ exports.getPayinList = async (req, res) => {
     if (status && ['pending', 'success', 'failed', 'reversed'].includes(status)) filter.status = status;
     if (network && ['TRC20', 'BEP20', 'SPAY'].includes(String(network).toUpperCase())) filter.network = String(network).toUpperCase();
 
-    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
-    const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
-    const skip = (pageNum - 1) * limitNum;
+    const { pageNum, limitNum, skip } = getPagination(page, limit);
 
     const [payinsRaw, count] = await Promise.all([
       Payin.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean({ getters: true }),
@@ -129,9 +123,7 @@ exports.getTransactions = async (req, res) => {
     if (note && ['payin', 'payout', 'reversal'].includes(note)) filter.note = note;
     if (network && ['TRC20', 'BEP20', 'INR'].includes(String(network).toUpperCase())) filter.network = String(network).toUpperCase();
 
-    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
-    const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
-    const skip = (pageNum - 1) * limitNum;
+    const { pageNum, limitNum, skip } = getPagination(page, limit);
 
     const [txnsRaw, count] = await Promise.all([
       Transaction.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean({ getters: true }),
@@ -140,14 +132,14 @@ exports.getTransactions = async (req, res) => {
     const transactions = txnsRaw.map((t) => ({
       trnId: t.trnId,
       currency: t.currency,
-      amount: t.amount ? parseFloat(t.amount.toString()) : t.amount,
+      amount: toNum(t.amount),
       type: t.type,
       note: t.note,
       remark: t.remark,
-      balanceAfter: t.balanceAfter ? parseFloat(t.balanceAfter.toString()) : t.balanceAfter,
+      balanceAfter: toNum(t.balanceAfter),
       status: t.status,
-      exchangeRate: t.exchangeRate != null ? parseFloat(t.exchangeRate.toString()) : null,
-      creditedAmount: t.creditedAmount != null ? parseFloat(t.creditedAmount.toString()) : null,
+      exchangeRate: toNum(t.exchangeRate),
+      creditedAmount: toNum(t.creditedAmount),
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
     }));
@@ -159,14 +151,7 @@ exports.getTransactions = async (req, res) => {
 
 exports.getBalance = async (req, res) => {
   try {
-    const last = await Transaction.findOne({ user: req.user.userId, status: 'success' })
-      .sort({ createdAt: -1 })
-      .lean({ getters: true });
-    let balance = 0;
-    if (last && last.balanceAfter != null) {
-      balance = parseFloat(last.balanceAfter.toString());
-      if (isNaN(balance)) balance = 0;
-    }
+    const balance = await getCurrentBalance(req.user.userId);
     return res.json({ success: true, balance });
   } catch (err) {
     return res.status(500).json({ success: 'failed', msg: 'Failed to fetch balance' });

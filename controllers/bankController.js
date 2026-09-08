@@ -1,4 +1,5 @@
 const Bank = require('../models/Bank');
+const { getPagination } = require('../utils/helpers');
 
 exports.addBank = async (req, res) => {
   try {
@@ -56,9 +57,7 @@ exports.getBanks = async (req, res) => {
       filter.status = status;
     }
 
-    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
-    const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
-    const skip = (pageNum - 1) * limitNum;
+    const { pageNum, limitNum, skip } = getPagination(page, limit);
 
     const [banks, count] = await Promise.all([
       Bank.find(filter, 'bankName holderName accountNumber ifsc status createdAt updatedAt')

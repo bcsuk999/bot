@@ -1,18 +1,11 @@
 const ExchangeRate = require('../models/ExchangeRate');
-const { getRateFor } = require('./adminExchangeController');
 
 // Fallback rate as per spec: 1$ = 112 INR — used when admin has not configured a rate yet
 const FALLBACK_RATE = 112;
 
 async function resolveRate() {
   try {
-    // Use shared admin logic: global active USDT rate else any active else fallback
-    // getRateFor already handles DB lookup, but its default fallback is 1 — we override to 112
-    const rate = await getRateFor('USDT', null);
-    if (rate != null && !isNaN(Number(rate)) && Number(rate) > 0 && Number(rate) !== 1) {
-      return Number(rate);
-    }
-    // If getRateFor returned 1, it means no configured rate — check directly for 1 vs fallback distinction
+    // global active USDT rate, else any active rate, else fallback
     const global = await ExchangeRate.findOne({ currency: 'USDT', network: null, isActive: true }).lean();
     if (global && global.rate != null) {
       const r = parseFloat(global.rate.toString());
