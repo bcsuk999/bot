@@ -18,23 +18,35 @@ function maskMobile(m) {
 
 exports.getReferralInfo = async (req, res) => {
   try {
-    const referralCount = await User.countDocuments({ referredBy: req.user.userId });
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const [totalreferralCount, todayReferralCount] = await Promise.all([
+      User.countDocuments({ referredBy: req.user.userId }),
+      User.countDocuments({ referredBy: req.user.userId, createdAt: { $gte: todayStart, $lte: todayEnd } }),
+    ]);
 
     const commissions = await Commission.aggregate([
       { $match: { referrer: req.user.userId, status: 'success' } },
-      { $group: { _id: null, totalEarned: { $sum: '$commissionAmount' }, count: { $sum: 1 } } },
+      { $group: { _id: null, totalEarned: { $sum: '$commissionAmount' } } },
+    ]);
+    const todayCommissions = await Commission.aggregate([
+      { $match: { referrer: req.user.userId, status: 'success', createdAt: { $gte: todayStart, $lte: todayEnd } } },
+      { $group: { _id: null, todayEarned: { $sum: '$commissionAmount' } } },
     ]);
 
     const totalEarned = commissions.length ? toNum(commissions[0].totalEarned) : 0;
-    const commissionCount = commissions.length ? commissions[0].count : 0;
+    const todayEarned = todayCommissions.length ? toNum(todayCommissions[0].todayEarned) : 0;
 
     res.json({
       success: true,
       msg: 'Referral info fetched',
-      inviteCode: req.user.userid,
-      referralCount,
-      commissionCount,
+      totalreferralCount,
       totalEarned,
+      todayReferralCount,
+      todayEarned,
     });
   } catch (err) {
     res.status(500).json({ success: 'failed', msg: 'Failed to fetch referral info' });
