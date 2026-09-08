@@ -1,6 +1,5 @@
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
-const Counter = require('../models/Counter');
 
 function parseBalance(v) {
   if (v == null) return 0;
@@ -55,31 +54,16 @@ async function getUserObjectId(userid) {
   return u ? u._id : null;
 }
 
-async function getNextSequence(name) {
-  const c = await Counter.findOneAndUpdate(
-    { _id: name },
-    { $inc: { seq: 1 } },
-    { returnDocument: 'after', upsert: true }
-  );
-  return c.seq;
-}
-
-function formatTrnId(seq) {
+// Time-based order ID: [prefix] + YYYYMMDD + HHMMSS + 9-digit nanosecond fraction.
+// The nanosecond part makes collisions within the same second practically impossible,
+// so no counter needed. Example (payin): P20260908093925967924200
+function generateOrderId(prefix = '') {
   const d = new Date();
-  const ds = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-  return `TXN${ds}${String(seq).padStart(4, '0')}`;
-}
-
-function formatPayinId(seq, prefix = 'PAY') {
-  const d = new Date();
-  const ds = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-  return `${prefix}${ds}${String(seq).padStart(4, '0')}`;
-}
-
-function formatPayoutId(seq) {
-  const d = new Date();
-  const ds = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-  return `PAYOUT${ds}${String(seq).padStart(4, '0')}`;
+  const pad = (n) => String(n).padStart(2, '0');
+  const ymd = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+  const hms = `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  const ns = String(process.hrtime.bigint() % 1000000000n).padStart(9, '0');
+  return `${prefix}${ymd}${hms}${ns}`;
 }
 
 module.exports = {
@@ -89,8 +73,5 @@ module.exports = {
   getPagination,
   getCurrentBalance,
   getUserObjectId,
-  getNextSequence,
-  formatTrnId,
-  formatPayinId,
-  formatPayoutId,
+  generateOrderId,
 };

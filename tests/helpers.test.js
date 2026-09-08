@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseBalance, formatTrnId, formatPayinId, formatPayoutId } from '../utils/helpers.js';
+import { parseBalance, generateOrderId } from '../utils/helpers.js';
 
 describe('parseBalance', () => {
   it('returns 0 for null/undefined', () => {
@@ -29,62 +29,33 @@ describe('parseBalance', () => {
   });
 });
 
-describe('formatTrnId', () => {
-  it('returns correct format with zero-padded seq', () => {
-    const result = formatTrnId(1);
-    expect(result).toMatch(/^TXN\d{8}0001$/);
+describe('generateOrderId', () => {
+  it('returns time-based ID with no prefix', () => {
+    const result = generateOrderId();
+    expect(result).toMatch(/^\d{23}$/);
   });
 
-  it('pads 4-digit seq', () => {
-    const result = formatTrnId(42);
-    expect(result).toMatch(/^TXN\d{8}0042$/);
+  it('includes the prefix when provided', () => {
+    const result = generateOrderId('P');
+    expect(result).toMatch(/^P\d{23}$/);
   });
 
-  it('handles large seq numbers', () => {
-    const result = formatTrnId(9999);
-    expect(result).toMatch(/^TXN\d{8}9999$/);
+  it('returns IDs of consistent length regardless of prefix', () => {
+    const txn = generateOrderId('TXN');
+    const po = generateOrderId('PO');
+    expect(txn).toMatch(/^TXN\d{23}$/);
+    expect(po).toMatch(/^PO\d{23}$/);
   });
 
-  it('includes current date in the ID', () => {
+  it('starts with current local date YYYYMMDD', () => {
     const now = new Date();
-    const expected = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-    const result = formatTrnId(1);
-    expect(result).toBe(`TXN${expected}0001`);
-  });
-});
-
-describe('formatPayinId', () => {
-  it('returns PAY prefix by default', () => {
-    const result = formatPayinId(1);
-    expect(result).toMatch(/^PAY\d{8}0001$/);
+    const ymd = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    const result = generateOrderId();
+    expect(result.startsWith(ymd)).toBe(true);
   });
 
-  it('accepts custom prefix', () => {
-    const result = formatPayinId(1, 'FPAY');
-    expect(result).toMatch(/^FPAY\d{8}0001$/);
-  });
-
-  it('pads seq to 4 digits', () => {
-    const result = formatPayinId(100);
-    expect(result).toMatch(/^PAY\d{8}0100$/);
-  });
-});
-
-describe('formatPayoutId', () => {
-  it('returns PAYOUT prefix', () => {
-    const result = formatPayoutId(1);
-    expect(result).toMatch(/^PAYOUT\d{8}0001$/);
-  });
-
-  it('pads seq to 4 digits', () => {
-    const result = formatPayoutId(25);
-    expect(result).toMatch(/^PAYOUT\d{8}0025$/);
-  });
-
-  it('includes current date', () => {
-    const now = new Date();
-    const expected = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-    const result = formatPayoutId(1);
-    expect(result).toBe(`PAYOUT${expected}0001`);
+  it('generates unique IDs for consecutive calls', () => {
+    const ids = new Set(Array.from({ length: 1000 }, () => generateOrderId()));
+    expect(ids.size).toBe(1000);
   });
 });

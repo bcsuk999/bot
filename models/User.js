@@ -39,7 +39,13 @@ withdrawal: {
     type: Boolean,
     default: false,
     index: true,
-  }
+  },
+  referredBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+    sparse: true,
+  },
 }, { timestamps: true });
 
 // Proper indexing - optimized for auth queries
@@ -48,5 +54,6 @@ userSchema.index({ userid: 1 }, { unique: true });
 userSchema.index({ mobile: 1, role: 1 }); // fast admin lookup: findOne({mobile, role})
 userSchema.index({ role: 1, status: 1 });
 userSchema.index({ createdAt: -1 });
+userSchema.index({ referredBy: 1 }, { sparse: true }); // referral lookups
 
 module.exports = mongoose.model('User', userSchema);

@@ -35,6 +35,15 @@ exports.register = async (req, res) => {
       return res.status(400).json({ success: 'failed', msg: 'Mobile and password are required' });
     }
 
+    let referredBy = null;
+    if (inviteCode && String(inviteCode).trim()) {
+      const referrer = await User.findOne({ userid: Number(inviteCode), status: 'active' }).select('_id').lean();
+      if (!referrer) {
+        return res.status(422).json({ success: 'failed', msg: 'Invalid invite code' });
+      }
+      referredBy = referrer._id;
+    }
+
     const [hashedPassword, firstUserid] = await Promise.all([
       bcrypt.hash(password, 10),
       reserveUserId(),
@@ -49,6 +58,7 @@ exports.register = async (req, res) => {
           mobile,
           password: hashedPassword,
           inviteCode: inviteCode || null,
+          referredBy,
           userid,
           role: 'user',
           status: 'active',

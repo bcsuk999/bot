@@ -78,6 +78,11 @@ const payinSchema = new mongoose.Schema(
       default: null,
       get: (v) => (v ? parseFloat(v.toString()) : v),
     },
+    commissionProcessed: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
   },
   {
     timestamps: true,

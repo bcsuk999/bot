@@ -2,7 +2,8 @@ const Payin = require('../models/Payin');
 const Transaction = require('../models/Transaction');
 const { getRateFor } = require('./adminExchangeController');
 const { approvePayin } = require('../services/payinService');
-const { parseBalance, getCurrentBalance, getNextSequence, formatTrnId, toNum, getPagination, serializeTransaction } = require('../utils/helpers');
+const { reverseCommission } = require('../services/commissionService');
+const { parseBalance, getCurrentBalance, generateOrderId, toNum, getPagination, serializeTransaction } = require('../utils/helpers');
 const logger = require('../utils/logger');
 
 // List payins with pagination + filters (userid, status, network)
@@ -173,8 +174,7 @@ exports.adminReverseTransaction = async (req, res) => {
     if (currentBalance < credited) return res.status(400).json({ success: 'failed', msg: 'Insufficient balance to reverse' });
     const newBalance = currentBalance - credited;
 
-    const seq = await getNextSequence('transactionId');
-    const newTrnId = formatTrnId(seq);
+    const newTrnId = generateOrderId('TXN');
 
     const reversal = await Transaction.create({
       trnId: newTrnId,
@@ -203,6 +203,7 @@ exports.adminReverseTransaction = async (req, res) => {
         payin.status = 'reversed';
         await payin.save();
       }
+      await reverseCommission({ payinId: original.referenceId, remark });
     }
 
     res.json({

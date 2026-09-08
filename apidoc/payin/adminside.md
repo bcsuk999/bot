@@ -103,10 +103,10 @@ Exchange rate is **not** set here — use `/api/admin/exchange-rates` (single gl
 - **Examples:**
   - `GET /api/admin/payins?userid=3056579&page=1&limit=20`
   - `GET /api/admin/payins?status=pending`
-  - `GET /api/admin/payins?trnId=TXN202608240001`
+  - `GET /api/admin/payins?trnId=TXN20260824100400123456789`
 - **Response:**
   ```json
-  { "success": true, "msg": "Payins fetched", "count": 50, "page": 1, "limit": 20, "totalPages": 3, "payins": [ { "payinId":"PAY...", "userid":3056579, "amount":120, "network":"BEP20", "address":"0x...", "status":"pending" } ] }
+  { "success": true, "msg": "Payins fetched", "count": 50, "page": 1, "limit": 20, "totalPages": 3, "payins": [ { "payinId":"P...", "userid":3056579, "amount":120, "network":"BEP20", "address":"0x...", "status":"pending" } ] }
   ```
 
 ### List Transactions (Admin)
@@ -115,7 +115,7 @@ Exchange rate is **not** set here — use `/api/admin/exchange-rates` (single gl
 - **Query Params:** `userid`, `trnId`, `status`, `type`, `note`, `network`, `page`, `limit`
 - **Examples:**
   - `GET /api/admin/transactions?userid=3056579&page=1&limit=20`
-  - `GET /api/admin/transactions?trnId=TXN202608240001`
+  - `GET /api/admin/transactions?trnId=TXN20260824100400123456789`
   - `GET /api/admin/transactions?status=pending&page=2&limit=50`
 - **Response:**
   ```json
@@ -127,7 +127,7 @@ Exchange rate is **not** set here — use `/api/admin/exchange-rates` (single gl
     "limit": 20,
     "totalPages": 5,
     "transactions": [
-      { "trnId":"TXN...", "userid":3056579, "amount":120, "type":"credit", "note":"payin", "remark":"BEP20 deposit", "balanceAfter":120, "status":"success", "referenceId":"PAY...", "createdAt":"..." }
+      { "trnId":"TXN...", "userid":3056579, "amount":120, "type":"credit", "note":"payin", "remark":"BEP20 deposit", "balanceAfter":120, "status":"success", "referenceId":"P...", "createdAt":"..." }
     ]
   }
   ```
@@ -136,7 +136,7 @@ Exchange rate is **not** set here — use `/api/admin/exchange-rates` (single gl
 #### Endpoint: `GET /api/admin/transactions/:trnId`
 - **Response:**
   ```json
-  { "success": true, "msg": "Transaction fetched", "transaction": { "trnId":"TXN...", "amount":120, "type":"credit", "note":"payin", "remark":"BEP20 deposit", "balanceAfter":0, "status":"pending", "userid":3056579 }, "payin": { "payinId":"PAY...", "status":"pending" } }
+  { "success": true, "msg": "Transaction fetched", "transaction": { "trnId":"TXN...", "amount":120, "type":"credit", "note":"payin", "remark":"BEP20 deposit", "balanceAfter":0, "status":"pending", "userid":3056579 }, "payin": { "payinId":"P...", "status":"pending" } }
   ```
 - 404 if not found
 
@@ -158,7 +158,7 @@ Exchange rate is **not** set here — use `/api/admin/exchange-rates` (single gl
 #### Endpoint: `POST /api/admin/payins/:payinId/reject`
 - **Description:** Rejects a pending payin → updates Payin status to `failed`. No Transaction created (no balance change).
 - **Request Body (optional):** `{ "remark": "invalid proof" }`
-- **Response:** `{ "success": true, "msg": "Payin rejected", "payin": { "payinId":"PAY...", "status":"failed" } }`
+- **Response:** `{ "success": true, "msg": "Payin rejected", "payin": { "payinId":"P...", "status":"failed" } }`
 - Errors: only pending payins can be rejected.
 
 ### Reverse Transaction
@@ -171,7 +171,7 @@ Exchange rate is **not** set here — use `/api/admin/exchange-rates` (single gl
     "success": true,
     "msg": "Transaction reversed",
     "original": { "trnId":"TXN...", "status":"reversed" },
-    "reversal": { "trnId":"TXN202608240010", "amount":120, "type":"debit", "note":"reversal", "remark":"Reversal of TXN...", "balanceAfter":0, "status":"success" }
+    "reversal": { "trnId":"TXN20260824100400123456789", "amount":120, "type":"debit", "note":"reversal", "remark":"Reversal of TXN...", "balanceAfter":0, "status":"success" }
   }
   ```
 - **Errors:**
@@ -183,7 +183,7 @@ Exchange rate is **not** set here — use `/api/admin/exchange-rates` (single gl
 ## Transaction Shape (shared with user)
 | Field | Type | Description |
 |-------|------|-------------|
-| `trnId` | String | `TXNYYYYMMDD####` |
+| `trnId` | String | Time-based `TXNYYYYMMDDHHMMSS########` (23 digits + prefix) |
 | `amount` | Decimal128 → number | 120 |
 | `type` | `credit` \| `debit` | |
 | `note` | `payin` \| `payout` \| `reversal` | |
@@ -191,7 +191,7 @@ Exchange rate is **not** set here — use `/api/admin/exchange-rates` (single gl
 | `balanceAfter` | Decimal128 → number | wallet after row |
 | `status` | `pending` \| `success` \| `failed` \| `reversed` | |
 | `userid` / `user` | Number / ObjectId | owner |
-| `referenceId` | String | `PAY...` |
+| `referenceId` | String | `P...` (payinId) |
 | `createdAt` / `updatedAt` | Date | |
 
 ## Exchange Rate Config (Admin) — USDT
@@ -229,7 +229,7 @@ Single rate shared across **all** USDT deposit addresses: balance increase = `pa
 ## Transaction Shape (with exchange rate)
 | Field | Type | Description |
 |-------|------|-------------|
-| `trnId` | String | `TXNYYYYMMDD####` |
+| `trnId` | String | Time-based `TXNYYYYMMDDHHMMSS########` (23 digits + prefix) |
 | `amount` | Decimal128 → number | 100 (original USDT) |
 | `creditedAmount` | Decimal128 → number | 9000 (`amount * rate`) |
 | `exchangeRate` | Decimal128 → number | 90 |
@@ -239,7 +239,7 @@ Single rate shared across **all** USDT deposit addresses: balance increase = `pa
 | `balanceAfter` | Decimal128 → number | wallet after row (includes creditedAmount) |
 | `status` | `pending` \| `success` \| `failed` \| `reversed` | |
 | `userid` / `user` | Number / ObjectId | owner |
-| `referenceId` | String | `PAY...` |
+| `referenceId` | String | `P...` (payinId) |
 | `createdAt` / `updatedAt` | Date | |
 
 ## Pagination Convention
@@ -379,14 +379,14 @@ receivedAmount = 100 + 11.2 = 111.2
     "totalDeduction": 300,
     "payouts": [
       {
-        "payoutId": "PAYOUT202608310001",
+        "payoutId": "PO20260831100400123456789",
         "amount": 100,
         "status": "pending",
         "bankName": "HDFC",
         "holderName": "John",
         "accountNumber": "1234567890",
         "ifsc": "HDFC0001234",
-        "trnId": "TXN202608310001",
+        "trnId": "TXN20260831100400123456789",
         "createdAt": "..."
       }
     ]
@@ -418,7 +418,7 @@ receivedAmount = 100 + 11.2 = 111.2
     "totalPages": 1,
     "payouts": [
       {
-        "payoutId": "PAYOUT202608310001",
+        "payoutId": "PO20260831100400123456789",
         "userid": 3056579,
         "amount": 100,
         "status": "pending",
@@ -426,7 +426,7 @@ receivedAmount = 100 + 11.2 = 111.2
         "holderName": "John",
         "accountNumber": "1234567890",
         "ifsc": "HDFC0001234",
-        "trnId": "TXN202608310001",
+        "trnId": "TXN20260831100400123456789",
         "remark": "",
         "createdAt": "...",
         "updatedAt": "..."
@@ -454,7 +454,7 @@ receivedAmount = 100 + 11.2 = 111.2
     "success": true,
     "msg": "Payout approved",
     "payout": {
-      "payoutId": "PAYOUT202608310001",
+      "payoutId": "PO20260831100400123456789",
       "amount": 100,
       "status": "success",
       "remark": "Payment processed via NEFT",
@@ -487,7 +487,7 @@ receivedAmount = 100 + 11.2 = 111.2
     "success": true,
     "msg": "Payout rejected",
     "payout": {
-      "payoutId": "PAYOUT202608310001",
+      "payoutId": "PO20260831100400123456789",
       "amount": 100,
       "status": "failed",
       "remark": "Bank details mismatch",
@@ -540,7 +540,7 @@ receivedAmount = 100 + 11.2 = 111.2
   {
     "success": true,
     "msg": "Payout processed via SimplyPay",
-    "payoutId": "PAYOUT202608310001",
+    "payoutId": "PO20260831100400123456789",
     "orderNo": "20250905123456789"
   }
   ```
@@ -555,7 +555,7 @@ receivedAmount = 100 + 11.2 = 111.2
 
 ### Query Order Status
 
-#### Endpoint: `GET /api/admin/simplypay/query?merOrderNo=PAYOUT202608310001`
+#### Endpoint: `GET /api/admin/simplypay/query?merOrderNo=PO20260831100400123456789`
 - **Description:** Query SimplyPay for order status.
 - **Headers:** `Authorization: Bearer <admin_token>`
 - **Query Params:** `merOrderNo` (required) — the payoutId or payinId
@@ -566,7 +566,7 @@ receivedAmount = 100 + 11.2 = 111.2
     "data": {
       "orderStatus": 2,
       "orderNo": "...",
-      "merOrderNo": "PAYOUT202608310001",
+      "merOrderNo": "PO20260831100400123456789",
       "amount": 100,
       "currency": "INR"
     }

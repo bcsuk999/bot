@@ -2,7 +2,7 @@ const Payin = require('../models/Payin');
 const Transaction = require('../models/Transaction');
 const DepositAddress = require('../models/DepositAddress');
 const { resolveRate } = require('./payinExchangeController');
-const { getNextSequence, formatPayinId, toNum, getPagination, getCurrentBalance } = require('../utils/helpers');
+const { generateOrderId, toNum, getPagination, getCurrentBalance } = require('../utils/helpers');
 const logger = require('../utils/logger');
 
 async function getDepositAddress(network) {
@@ -47,8 +47,7 @@ exports.createPayin = async (req, res) => {
     const exchangeRate = await resolveRate();
     const receivedAmount = parsedAmount * exchangeRate;
 
-    const payinSeq = await getNextSequence('payinId');
-    const payinId = formatPayinId(payinSeq);
+    const payinId = generateOrderId('P');
 
     const payin = await Payin.create({
       payinId,

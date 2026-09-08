@@ -8,6 +8,7 @@ const { togglePayoutStatus, getPayoutSwitch } = require('../controllers/payoutCo
 const { getBonusConfig } = require('../controllers/adminBonusController');
 const homeController = require('../controllers/homeController');
 const simplypayController = require('../controllers/simplypayController');
+const { getReferralInfo, getReferralList, getMyCommissions } = require('../controllers/referralController');
 const auth = require('../middleware/auth');
 const optionalAuth = require('../middleware/optionalAuth');
 
@@ -43,5 +44,10 @@ router.post('/simplypay/deposit', auth, simplypayController.createPayin);
 
 // Bonus config (public - users can see current bonus rates)
 router.get('/bonus-config', optionalAuth, getBonusConfig);
+
+// Referral system
+router.get('/referral-info', auth, getReferralInfo);
+router.get('/referral/list', auth, getReferralList);
+router.get('/commissions', auth, getMyCommissions);
 
 module.exports = router;

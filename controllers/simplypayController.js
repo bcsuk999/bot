@@ -4,7 +4,7 @@ const Transaction = require('../models/Transaction');
 const User = require('../models/User');
 const simplypay = require('../services/simplypay');
 const { calculateBonus } = require('./adminBonusController');
-const { getCurrentBalance, getNextSequence, formatTrnId, formatPayinId } = require('../utils/helpers');
+const { getCurrentBalance, generateOrderId } = require('../utils/helpers');
 const { approvePayin } = require('../services/payinService');
 const logger = require('../utils/logger');
 
@@ -22,8 +22,7 @@ exports.createPayin = async (req, res) => {
       return res.status(400).json({ success: 'failed', msg: 'Invalid amount' });
     }
 
-    const payinSeq = await getNextSequence('payinId');
-    const payinId = formatPayinId(payinSeq, 'FPAY');
+    const payinId = generateOrderId('P');
 
     const payin = await Payin.create({
       payinId,
@@ -213,8 +212,7 @@ exports.payoutCallback = async (req, res) => {
       const currentBalance = await getCurrentBalance(payout.user);
       const newBalance = currentBalance + refundAmount;
 
-      const seq = await getNextSequence('transactionId');
-      const refundTrnId = formatTrnId(seq);
+      const refundTrnId = generateOrderId('TXN');
 
       await Transaction.create({
         trnId: refundTrnId,

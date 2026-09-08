@@ -2,7 +2,7 @@ const Payout = require('../models/Payout');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
 const Bank = require('../models/Bank');
-const { parseBalance, getCurrentBalance, getNextSequence, formatTrnId, formatPayoutId, getPagination, toNum } = require('../utils/helpers');
+const { parseBalance, getCurrentBalance, generateOrderId, getPagination, toNum } = require('../utils/helpers');
 const logger = require('../utils/logger');
 
 exports.listPayoutUsers = async (req, res) => {
@@ -122,10 +122,8 @@ exports.createPayout = async (req, res) => {
     let runningBalance = currentBalance;
 
     for (let i = 0; i < parsedOrders; i++) {
-      const payoutSeq = await getNextSequence('payoutId');
-      const txnSeq = await getNextSequence('transactionId');
-      const payoutId = formatPayoutId(payoutSeq);
-      const trnId = formatTrnId(txnSeq);
+      const payoutId = generateOrderId('PO');
+      const trnId = generateOrderId('TXN');
 
       runningBalance -= parsedAmount;
 
@@ -304,8 +302,7 @@ exports.rejectPayout = async (req, res) => {
     const currentBalance = await getCurrentBalance(payout.user);
     const newBalance = currentBalance + refundAmount;
 
-    const txnSeq = await getNextSequence('transactionId');
-    const refundTrnId = formatTrnId(txnSeq);
+    const refundTrnId = generateOrderId('TXN');
 
     await Transaction.create({
       trnId: refundTrnId,

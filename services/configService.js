@@ -1,5 +1,6 @@
 const BonusConfig = require('../models/BonusConfig');
 const Settings = require('../models/Settings');
+const CommissionConfig = require('../models/CommissionConfig');
 const { getCached, clearCache } = require('../utils/cache');
 const { resolveRate } = require('../controllers/payinExchangeController');
 
@@ -23,6 +24,19 @@ async function getInrBonus() {
   });
 }
 
+async function getCommissionConfig() {
+  return getCached('commissionConfig', TTL_MS, async () => {
+    let config = await CommissionConfig.findOne().sort({ updatedAt: -1 }).lean();
+    if (!config) {
+      config = { commissionPercentage: 0, isActive: false };
+    }
+    return {
+      commissionPercentage: config.commissionPercentage || 0,
+      isActive: config.isActive || false,
+    };
+  });
+}
+
 async function getTelegram() {
   return getCached('telegram', TTL_MS, async () => {
     const s = await Settings.findOne().lean();
@@ -41,6 +55,10 @@ function refreshInrBonus() {
   clearCache('inrBonus');
 }
 
+function refreshCommissionConfig() {
+  clearCache('commissionConfig');
+}
+
 function refreshTelegram() {
   clearCache('telegram');
 }
@@ -48,8 +66,10 @@ function refreshTelegram() {
 module.exports = {
   getExchangeRate,
   getInrBonus,
+  getCommissionConfig,
   getTelegram,
   refreshExchangeRate,
   refreshInrBonus,
+  refreshCommissionConfig,
   refreshTelegram,
 };

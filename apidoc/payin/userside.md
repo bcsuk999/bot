@@ -69,7 +69,7 @@ If user `status !== active` → `403 { "success": "failed", "msg": "Access denie
 ```json
 {
   "success": true,
-  "payinId": "PAY202609050001",
+  "payinId": "P20260908100400912345678",
   "address": "0x4993D6bD7E9b27D5B306F36ec0b4Cea8927BB2fB",
   "currency": "USDT",
   "amount": 120,
@@ -105,7 +105,7 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
 #### Request Body:
 ```json
 {
-  "payinId": "PAY202609050001",
+  "payinId": "P20260908100400912345678",
   "txHash": "0xabc123def4567890123456789abcdef0123456789abcdef0123456789abcdef"
 }
 ```
@@ -123,7 +123,7 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
   "success": true,
   "msg": "Transaction hash submitted",
   "payin": {
-    "payinId": "PAY202609050001",
+    "payinId": "P20260908100400912345678",
     "txHash": "0xabc123...",
     "network": "BEP20",
     "status": "pending",
@@ -173,7 +173,7 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
 ```json
 {
   "success": true,
-  "payinId": "FPAY202609050001",
+  "payinId": "FP20260908100400912345678",
   "amount": 100,
   "bonus": 11.2,
   "receivedAmount": 111.2,
@@ -246,7 +246,7 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
   "totalPages": 3,
   "payins": [
     {
-      "payinId": "FPAY202609050001",
+      "payinId": "FP20260908100400912345678",
       "currency": "INR",
       "amount": 100,
       "bonusAmount": 11.2,
@@ -258,7 +258,7 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
       "updatedAt": "..."
     },
     {
-      "payinId": "PAY202609050001",
+      "payinId": "P20260908100400912345678",
       "currency": "USDT",
       "amount": 120,
       "bonusAmount": 0,
@@ -303,7 +303,7 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
   "totalPages": 3,
   "transactions": [
     {
-      "trnId": "TXN202609050002",
+      "trnId": "TXN20260908100400912345678",
       "currency": "INR",
       "amount": 111.2,
       "type": "credit",
@@ -317,7 +317,7 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
       "updatedAt": "2026-09-05T10:05:00.000Z"
     },
     {
-      "trnId": "TXN202609050001",
+      "trnId": "TXN20260908100400912345678",
       "currency": "USDT",
       "amount": 120,
       "type": "credit",
@@ -337,8 +337,7 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
 #### Transaction Shape:
 | Field | Type | Description |
 |-------|------|-------------|
-| `trnId` | String | Unique `TXNYYYYMMDD####`, indexed |
-| `currency` | String | `USDT` or `INR` |
+| `trnId` | String | Unique, time-based `TXNYYYYMMDDHHMMSS########` (23 digits + prefix), indexed |
 | `amount` | Number (Decimal128) | Credited amount (includes bonus for INR) |
 | `creditedAmount` | Number (Decimal128) | `amount * exchangeRate` |
 | `exchangeRate` | Number (Decimal128) | Rate applied (1 for INR, 112 for USDT) |
@@ -418,7 +417,7 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
 ### Payin Model Fields
 | Field | Type | Description |
 |-------|------|-------------|
-| `payinId` | String | Unique ID — `PAYYYYYMMDD####` (USDT) or `FPAYYYYYMMDD####` (INR) |
+| `payinId` | String | Unique, time-based `PYYYYMMDDHHMMSS########` — 23 digits after `P` (USDT & INR) |
 | `user` | ObjectId | Ref User `_id`, indexed |
 | `userid` | Number | Denormalized `User.userid`, indexed |
 | `currency` | String | `USDT` or `INR` |
@@ -439,8 +438,7 @@ Note: `receivedAmount = amount * exchangeRate` (e.g. 120 USDT * 112 = 13440 INR)
 ### Transaction Model Fields
 | Field | Type | Description |
 |-------|------|-------------|
-| `trnId` | String | Unique `TXNYYYYMMDD####`, indexed |
-| `user` | ObjectId | Ref User `_id`, indexed |
+| `trnId` | String | Unique, time-based `TXNYYYYMMDDHHMMSS########` (23 digits + prefix), indexed |
 | `userid` | Number | Denormalized `User.userid`, indexed |
 | `amount` | Decimal128 | Amount (includes bonus for INR) |
 | `type` | String | `credit` \| `debit` |

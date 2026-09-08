@@ -1,12 +1,12 @@
 const Transaction = require('../models/Transaction');
 const { getRateFor } = require('../controllers/adminExchangeController');
 const { calculateBonus } = require('../controllers/adminBonusController');
+const { creditCommission } = require('./commissionService');
 const {
   parseBalance,
   getCurrentBalance,
   getUserObjectId,
-  getNextSequence,
-  formatTrnId,
+  generateOrderId,
 } = require('../utils/helpers');
 
 function createApprovalError(message) {
@@ -40,8 +40,7 @@ async function approvePayin(payin, options = {}) {
   const creditedAmount = isInr ? amount + bonus : amount * rate;
   const newBalance = currentBalance + creditedAmount;
 
-  const seq = await getNextSequence('transactionId');
-  const trnId = formatTrnId(seq);
+  const trnId = generateOrderId('TXN');
   const defaultRemark = isInr
     ? bonus > 0 ? `INR deposit + ${bonus} bonus` : 'INR deposit'
     : `${payin.network} deposit`;
@@ -74,6 +73,17 @@ async function approvePayin(payin, options = {}) {
     payin.receivedAmount = creditedAmount;
   }
   await payin.save();
+
+  if (payin.commissionProcessed !== true) {
+    await creditCommission({
+      userid: payin.userid,
+      payinId: payin.payinId,
+      depositAmount: amount,
+      currency: payin.currency || (isInr ? 'INR' : 'USDT'),
+    });
+    payin.commissionProcessed = true;
+    await payin.save();
+  }
 
   return transaction;
 }

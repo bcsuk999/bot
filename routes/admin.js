@@ -35,6 +35,12 @@ const {
 const simplypayController = require('../controllers/simplypayController');
 const { getBonusConfig, updateBonusConfig } = require('../controllers/adminBonusController');
 const { getSettings, updateSettings } = require('../controllers/adminSettingsController');
+const {
+  getCommissionConfig,
+  updateCommissionConfig,
+  adminListCommissions,
+  adminReferralStats,
+} = require('../controllers/adminCommissionController');
 const auth = require('../middleware/auth');
 const requireAdmin = require('../middleware/requireAdmin');
 
@@ -83,6 +89,12 @@ router.get('/simplypay/query', auth, requireAdmin, simplypayController.queryOrde
 // INR bonus config (percentage + flat)
 router.get('/bonus-config', auth, requireAdmin, getBonusConfig);
 router.post('/bonus-config', auth, requireAdmin, updateBonusConfig);
+
+// Referral commission config
+router.get('/commission-config', auth, requireAdmin, getCommissionConfig);
+router.post('/commission-config', auth, requireAdmin, updateCommissionConfig);
+router.get('/commissions', auth, requireAdmin, adminListCommissions);
+router.get('/referral-stats', auth, requireAdmin, adminReferralStats);
 
 // App settings (telegram links, etc.)
 router.get('/settings', auth, requireAdmin, getSettings);
