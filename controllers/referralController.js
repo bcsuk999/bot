@@ -1,11 +1,19 @@
 const User = require('../models/User');
 const Commission = require('../models/Commission');
+const Payin = require('../models/Payin');
 const { getPagination } = require('../utils/helpers');
 
 function toNum(v) {
   if (v == null) return 0;
   const n = Number(v && v.toString ? v.toString() : v);
   return isNaN(n) ? 0 : n;
+}
+
+function maskMobile(m) {
+  if (!m) return null;
+  const s = String(m);
+  if (s.length <= 6) return s;
+  return `${s.slice(0, 3)}***${s.slice(-3)}`;
 }
 
 exports.getReferralInfo = async (req, res) => {
@@ -36,10 +44,18 @@ exports.getReferralInfo = async (req, res) => {
 exports.getReferralList = async (req, res) => {
   try {
     const { pageNum, limitNum, skip } = getPagination(req.query.page, req.query.limit);
-    const { status } = req.query;
+    const { month } = req.query;
 
     const query = { referredBy: req.user.userId };
-    if (status) query.status = status;
+    if (month && /^\d{4}-\d{2}$/.test(String(month))) {
+      const [y, m] = String(month).split('-').map(Number);
+      if (m >= 1 && m <= 12) {
+        query.createdAt = {
+          $gte: new Date(Date.UTC(y, m - 1, 1)),
+          $lt: new Date(Date.UTC(y, m, 1)),
+        };
+      }
+    }
 
     const [count, referrals] = await Promise.all([
       User.countDocuments(query),
@@ -47,9 +63,19 @@ exports.getReferralList = async (req, res) => {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limitNum)
-        .select('mobile userid status createdAt')
+        .select('mobile userid createdAt')
         .lean(),
     ]);
+
+    const userids = referrals.map((r) => r.userid).filter(Boolean);
+    let depositTotals = {};
+    if (userids.length) {
+      const rows = await Payin.aggregate([
+        { $match: { userid: { $in: userids }, status: 'success' } },
+        { $group: { _id: '$userid', total: { $sum: '$amount' } } },
+      ]);
+      for (const r of rows) depositTotals[r._id] = toNum(r.total);
+    }
 
     res.json({
       success: true,
@@ -58,7 +84,11 @@ exports.getReferralList = async (req, res) => {
       page: pageNum,
       limit: limitNum,
       totalPages: Math.ceil(count / limitNum),
-      referrals,
+      referrals: referrals.map((r) => ({
+        mobile: maskMobile(r.mobile),
+        totaldepositamt: depositTotals[r.userid] || 0,
+        regat: r.createdAt,
+      })),
     });
   } catch (err) {
     res.status(500).json({ success: 'failed', msg: 'Failed to fetch referral list' });
@@ -75,7 +105,8 @@ exports.getMyCommissions = async (req, res) => {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limitNum)
-        .select('commissionId refereeUserid payinId depositAmount currency commissionPercentage commissionAmount createdAt')
+        .select('referee commissionAmount createdAt')
+        .populate('referee', 'mobile')
         .lean(),
     ]);
 
@@ -87,12 +118,7 @@ exports.getMyCommissions = async (req, res) => {
       limit: limitNum,
       totalPages: Math.ceil(count / limitNum),
       commissions: commissions.map((c) => ({
-        commissionId: c.commissionId,
-        refereeUserid: c.refereeUserid,
-        payinId: c.payinId,
-        depositAmount: toNum(c.depositAmount),
-        currency: c.currency,
-        commissionPercentage: c.commissionPercentage,
+        refreeemobile: maskMobile(c.referee && c.referee.mobile),
         commissionAmount: toNum(c.commissionAmount),
         createdAt: c.createdAt,
       })),
