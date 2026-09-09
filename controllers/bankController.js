@@ -58,14 +58,18 @@ exports.getBanks = async (req, res) => {
     }
 
     const { pageNum, limitNum, skip } = getPagination(page, limit);
+    // Use index hint to avoid in-memory sort - covers page=1&limit=2 case
+    const hint = filter.status ? { user: 1, status: 1, createdAt: -1 } : { user: 1, createdAt: -1 };
 
     const [banks, count] = await Promise.all([
-      Bank.find(filter, 'bankName holderName accountNumber ifsc status createdAt updatedAt')
+      Bank.find(filter)
+        .select('bankName holderName accountNumber ifsc status createdAt updatedAt')
         .sort({ createdAt: -1 })
+        .hint(hint)
         .skip(skip)
         .limit(limitNum)
         .lean(),
-      Bank.countDocuments(filter),
+      Bank.countDocuments(filter).hint(hint),
     ]);
 
     res.json({ success: true, msg: 'Banks fetched', count, page: pageNum, limit: limitNum, totalPages: Math.ceil(count / limitNum), banks });
