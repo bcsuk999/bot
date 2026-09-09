@@ -24,6 +24,9 @@ exports.createPayin = async (req, res) => {
 
     const payinId = generateOrderId('P');
 
+    const bonus = await calculateBonus(parsedAmount);
+    const receivedAmount = parsedAmount + bonus;
+
     const payin = await Payin.create({
       payinId,
       userid: req.user.userid,
@@ -36,6 +39,8 @@ exports.createPayin = async (req, res) => {
       remark: 'INR deposit via SimplyPay',
       exchangeRate: 1,
       creditedAmount: parsedAmount,
+      bonusAmount: bonus,
+      receivedAmount,
     });
 
     const user = await User.findById(req.user.userId).lean();
@@ -58,9 +63,6 @@ exports.createPayin = async (req, res) => {
       await payin.save();
       return res.status(400).json({ success: 'failed', msg: errMsg });
     }
-
-    const bonus = await calculateBonus(parsedAmount);
-    const receivedAmount = parsedAmount + bonus;
 
     return res.status(201).json({
       success: true,

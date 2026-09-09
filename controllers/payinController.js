@@ -61,6 +61,7 @@ exports.createPayin = async (req, res) => {
       remark: `${currency} ${network} deposit`,
       exchangeRate,
       creditedAmount: receivedAmount,
+      receivedAmount,
     });
 
     return res.status(201).json({

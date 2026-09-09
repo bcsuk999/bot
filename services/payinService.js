@@ -16,7 +16,7 @@ function createApprovalError(message) {
 }
 
 async function approvePayin(payin, options = {}) {
-  const { overrideRate, txHash, remark } = options;
+  const { txHash, remark } = options;
 
   const userObjId = await getUserObjectId(payin.userid);
   if (!userObjId) throw createApprovalError('User not found for payin');
@@ -27,17 +27,17 @@ async function approvePayin(payin, options = {}) {
 
   let rate = 1;
   let bonus = 0;
+  let creditedAmount;
   if (isInr) {
-    bonus = await calculateBonus(amount);
-  } else if (overrideRate != null) {
-    const pr = Number(overrideRate);
-    if (!isFinite(pr) || pr <= 0) throw createApprovalError('Invalid exchangeRate');
-    rate = pr;
+    rate = 1;
+    bonus = payin.bonusAmount != null ? parseBalance(payin.bonusAmount) : await calculateBonus(amount);
+    creditedAmount = payin.receivedAmount != null ? parseBalance(payin.receivedAmount) : amount + bonus;
   } else {
-    rate = await getRateFor(payin.currency || 'USDT', payin.network || null);
+    rate = payin.exchangeRate != null ? parseBalance(payin.exchangeRate) : (await getRateFor(payin.currency || 'USDT', payin.network || null));
+    creditedAmount = payin.receivedAmount != null ? parseBalance(payin.receivedAmount) : amount * rate;
   }
 
-  const creditedAmount = isInr ? amount + bonus : amount * rate;
+  if (!isFinite(rate) || rate <= 0) throw createApprovalError('Invalid exchange rate on payin');
   const newBalance = currentBalance + creditedAmount;
 
   const trnId = generateOrderId('TXN');
@@ -68,9 +68,9 @@ async function approvePayin(payin, options = {}) {
   if (remark) payin.remark = String(remark).trim();
   payin.exchangeRate = rate;
   payin.creditedAmount = creditedAmount;
+  payin.receivedAmount = creditedAmount;
   if (isInr) {
     payin.bonusAmount = bonus;
-    payin.receivedAmount = creditedAmount;
   }
   await payin.save();
 

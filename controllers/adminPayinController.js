@@ -103,18 +103,17 @@ exports.adminGetTransactionByTrnId = async (req, res) => {
 exports.adminApproveTransaction = async (req, res) => {
   try {
     const { payinId } = req.params;
-    const { txHash, remark, exchangeRate: overrideRate } = req.body;
+    const { txHash, remark } = req.body;
 
     const payin = await Payin.findOne({ payinId });
     if (!payin) return res.status(404).json({ success: 'failed', msg: 'Payin not found' });
     if (payin.status !== 'pending') return res.status(400).json({ success: 'failed', msg: `Cannot approve, payin status is ${payin.status}` });
 
-    const transaction = await approvePayin(payin, { overrideRate, txHash, remark });
+    const transaction = await approvePayin(payin, { txHash, remark });
 
     res.json({
       success: true,
-      msg: 'Payin approved',
-      transaction: serializeTransaction(transaction),
+      msg: `Payin ${payin.payinId} approved`,
     });
   } catch (err) {
     if (err.status) return res.status(err.status).json({ success: 'failed', msg: err.message });
