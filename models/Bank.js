@@ -46,5 +46,8 @@ const bankSchema = new mongoose.Schema({
 // Compound / query-optimized indexes
 bankSchema.index({ user: 1, status: 1, createdAt: -1 });
 bankSchema.index({ user: 1, createdAt: -1 });
+// Optimised for PATCH /api/user/bankstatus -> findOneAndUpdate({accountNumber, user})
+bankSchema.index({ user: 1, accountNumber: 1 });
+bankSchema.index({ accountNumber: 1, user: 1 });
 
 module.exports = mongoose.model('Bank', bankSchema);

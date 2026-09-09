@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { register, login } = require('../controllers/userController');
+const { register, login, changePassword } = require('../controllers/userController');
 const { addBank, getBanks, updateBankStatus } = require('../controllers/bankController');
 const { createPayin, getPayinList, getTransactions, getBalance, submitPayinTxHash } = require('../controllers/payinController');
 const { getPayinExchangeRate } = require('../controllers/payinExchangeController');
@@ -14,6 +14,7 @@ const optionalAuth = require('../middleware/optionalAuth');
 
 router.post('/register', register);
 router.post('/login', login);
+router.post('/change-password', auth, changePassword);
 
 // Exchange rate - single endpoint, no currency param, returns current rate
 // GET /api/user/payin/exchange -> { success:true, rate:112 }

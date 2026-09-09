@@ -14,7 +14,7 @@ const auth = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.userId).lean();
+    const user = await User.findById(decoded.userId).select('_id userid role mobile status withdrawal').lean();
     if (!user) {
       return res.status(401).json({ success: 'failed', msg: 'Unauthorized: User not found' });
     }
@@ -27,7 +27,8 @@ const auth = async (req, res, next) => {
       userId: user._id,
       userid: user.userid,
       role: user.role,
-      mobile: user.mobile
+      mobile: user.mobile,
+      withdrawal: user.withdrawal || false,
     };
     next();
   } catch (err) {

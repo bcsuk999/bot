@@ -76,21 +76,27 @@ exports.getBanks = async (req, res) => {
 
 exports.updateBankStatus = async (req, res) => {
   try {
-    const { accountNumber, status } = req.body;
+    const { accountNumber, bankId, status } = req.body;
 
     if (!status || !['enable', 'disable'].includes(status)) {
       return res.status(400).json({ success: 'failed', msg: 'Status must be enable or disable' });
     }
 
-    if (!accountNumber) {
-      return res.status(400).json({ success: 'failed', msg: 'accountNumber is required' });
+    // Optimised: prefer _id (primary index) if provided, fallback to accountNumber for backward compat
+    const trimmedAccount = accountNumber ? String(accountNumber).trim() : null;
+    if (!bankId && !trimmedAccount) {
+      return res.status(400).json({ success: 'failed', msg: 'accountNumber or bankId is required' });
     }
 
+    const filter = bankId
+      ? { _id: bankId, user: req.user.userId }
+      : { accountNumber: trimmedAccount, user: req.user.userId };
+
     const bank = await Bank.findOneAndUpdate(
-      { accountNumber: accountNumber.trim(), user: req.user.userId },
-      { status },
-      { returnDocument: 'after' }
-    ).select('bankName holderName accountNumber ifsc status createdAt updatedAt');
+      filter,
+      { $set: { status } },
+      { returnDocument: 'after', projection: 'bankName holderName accountNumber ifsc status createdAt updatedAt' }
+    ).lean();
 
     if (!bank) {
       return res.status(404).json({ success: 'failed', msg: 'Bank not found' });
@@ -98,6 +104,9 @@ exports.updateBankStatus = async (req, res) => {
 
     res.json({ success: true, msg: 'Bank status updated successfully', bank });
   } catch (err) {
+    if (err.name === 'CastError') {
+      return res.status(400).json({ success: 'failed', msg: 'Invalid bankId' });
+    }
     res.status(500).json({ success: 'failed', msg: 'Failed to update bank status' });
   }
 };

@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 require('../db/conn');
 const logger = require('../utils/logger');
 const { getPagination } = require('../utils/helpers');
+const passwordService = require('../services/passwordService');
 
 exports.login = async (req, res) => {
   try {
@@ -134,5 +135,37 @@ exports.listUsers = async (req, res) => {
   } catch (err) {
     logger.error({ err }, 'listUsers error');
     return res.status(500).json({ success: 'failed', msg: 'Failed to fetch users' });
+  }
+};
+
+exports.changePassword = async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    await passwordService.changeOwnPassword(req.user.userId, oldPassword, newPassword);
+    res.json({ success: true, msg: 'Password changed successfully' });
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ success: 'failed', msg: err.message });
+    }
+    logger.error({ err }, 'Admin changePassword error');
+    res.status(500).json({ success: 'failed', msg: 'Failed to change password' });
+  }
+};
+
+exports.resetUserPassword = async (req, res) => {
+  try {
+    const { userid } = req.params;
+    const { newPassword } = req.body;
+    if (!userid) {
+      return res.status(400).json({ success: 'failed', msg: 'userid param is required' });
+    }
+    await passwordService.adminResetUserPassword(userid, newPassword);
+    res.json({ success: true, msg: 'User password reset successfully' });
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ success: 'failed', msg: err.message });
+    }
+    logger.error({ err }, 'Admin resetUserPassword error');
+    res.status(500).json({ success: 'failed', msg: 'Failed to reset user password' });
   }
 };

@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 require('../db/conn');
 const { getCurrentBalance } = require('../utils/helpers');
 const logger = require('../utils/logger');
+const passwordService = require('../services/passwordService');
 
 const BASE_USERID = 3056579;
 const USERID_STEP = 33;
@@ -114,5 +115,19 @@ exports.login = async (req, res) => {
   } catch (err) {
     logger.error({ err }, 'Login error');
     res.status(500).json({ success: 'failed', msg: 'Failed to login' });
+  }
+};
+
+exports.changePassword = async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    await passwordService.changeOwnPassword(req.user.userId, oldPassword, newPassword);
+    res.json({ success: true, msg: 'Password changed successfully' });
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ success: 'failed', msg: err.message });
+    }
+    logger.error({ err }, 'User changePassword error');
+    res.status(500).json({ success: 'failed', msg: 'Failed to change password' });
   }
 };

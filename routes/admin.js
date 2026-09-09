@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { login, updateUserStatus, listUsers } = require('../controllers/adminController');
+const { login, updateUserStatus, listUsers, changePassword, resetUserPassword } = require('../controllers/adminController');
 const { listBanks, updateBankStatus } = require('../controllers/adminBankController');
 const {
   listDepositAddresses,
@@ -45,6 +45,8 @@ const auth = require('../middleware/auth');
 const requireAdmin = require('../middleware/requireAdmin');
 
 router.post('/login', login);
+router.post('/change-password', auth, requireAdmin, changePassword);
+router.post('/users/:userid/reset-password', auth, requireAdmin, resetUserPassword);
 router.get('/users', auth, requireAdmin, listUsers);
 router.patch('/users/:userid/status', auth, requireAdmin, updateUserStatus);
 
