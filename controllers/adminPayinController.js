@@ -32,6 +32,7 @@ exports.adminListPayins = async (req, res) => {
         network: p.network,
         status: p.status,
         txHash: p.txHash,
+        remark: p.remark,
         bonus: toNum(p.bonusAmount) || 0,
         receivedAmount: toNum(p.receivedAmount) || toNum(p.creditedAmount) || toNum(p.amount),
         createdAt: p.createdAt,
