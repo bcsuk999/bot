@@ -64,6 +64,12 @@ exports.createPayin = async (req, res) => {
       return res.status(400).json({ success: 'failed', msg: errMsg });
     }
 
+    const deepLink = apiRes.data?.params?.deepLink || null;
+    if (deepLink) {
+      payin.address = deepLink;
+      await payin.save();
+    }
+
     return res.status(201).json({
       success: true,
       payinId,
@@ -72,7 +78,7 @@ exports.createPayin = async (req, res) => {
       receivedAmount,
       currency: 'INR',
       paymentLink: apiRes.data?.params?.paymentLink || null,
-      deepLink: apiRes.data?.params?.deepLink || null,
+      deepLink,
       orderNo: apiRes.data?.orderNo || null,
     });
   } catch (err) {

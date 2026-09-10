@@ -9,18 +9,12 @@ const logger = require('../utils/logger');
 // List payins with pagination + filters (userid, status, network)
 exports.adminListPayins = async (req, res) => {
   try {
-    const { userid, status, network, trnId, payinId, page = 1, limit = 20 } = req.query;
+    const { userid, status, network, payinId, page = 1, limit = 20 } = req.query;
     const filter = {};
     if (userid && !isNaN(Number(userid))) filter.userid = Number(userid);
     if (status && ['pending', 'success', 'failed', 'reversed'].includes(status)) filter.status = status;
     if (network && ['TRC20', 'BEP20', 'SPAY'].includes(String(network).toUpperCase())) filter.network = String(network).toUpperCase();
-    if (payinId) filter.payinId = payinId;
-    // if trnId given, find transaction's referenceId first
-    if (trnId) {
-      const txn = await Transaction.findOne({ trnId }).lean();
-      if (!txn) return res.json({ success: true, msg: 'Payins fetched', count: 0, page: 1, limit: 20, totalPages: 0, payins: [] });
-      filter.payinId = txn.referenceId;
-    }
+    if (payinId) filter.payinId = { $regex: String(payinId).trim(), $options: 'i' };
 
     const { pageNum, limitNum, skip } = getPagination(page, limit);
 
@@ -28,20 +22,29 @@ exports.adminListPayins = async (req, res) => {
       Payin.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean({ getters: true }),
       Payin.countDocuments(filter),
     ]);
-    // enrich with linked transaction trnId (latest per payinId)
-    const payinIds = payinsRaw.map((p) => p.payinId).filter(Boolean)
-    let trnMap = {}
-    if (payinIds.length) {
-      const txns = await Transaction.find({ referenceId: { $in: payinIds } }).sort({ createdAt: -1 }).lean()
-      for (const t of txns) {
-        if (!trnMap[t.referenceId]) trnMap[t.referenceId] = t.trnId
+    const payins = payinsRaw.map((p) => {
+      const isInr = p.currency === 'INR' || p.network === 'SPAY';
+      const row = {
+        payinId: p.payinId,
+        userid: p.userid,
+        currency: p.currency,
+        amount: toNum(p.amount),
+        network: p.network,
+        status: p.status,
+        txHash: p.txHash,
+        bonus: toNum(p.bonusAmount) || 0,
+        receivedAmount: toNum(p.receivedAmount) || toNum(p.creditedAmount) || toNum(p.amount),
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt,
+      };
+      if (isInr) {
+        row.deepLink = p.address;
+      } else {
+        row.address = p.address;
+        row.exchangeRate = toNum(p.exchangeRate);
       }
-    }
-    const payins = payinsRaw.map((p) => ({
-      ...p,
-      amount: toNum(p.amount),
-      trnId: trnMap[p.payinId] || null,
-    }));
+      return row;
+    });
     res.json({ success: true, msg: 'Payins fetched', count, page: pageNum, limit: limitNum, totalPages: Math.ceil(count / limitNum), payins });
   } catch (err) {
     res.status(500).json({ success: 'failed', msg: 'Failed to fetch payins' });
