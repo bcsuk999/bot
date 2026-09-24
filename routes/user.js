@@ -43,6 +43,9 @@ router.patch('/payout-switch', auth, togglePayoutStatus);
 // SimplyPay INR deposit
 router.post('/simplypay/deposit', auth, simplypayController.createPayin);
 
+// SimplyPay payout
+router.post('/simplypay/payout', auth, simplypayController.createPayout);
+
 // Bonus config (public - users can see current bonus rates)
 router.get('/bonus-config', optionalAuth, getBonusConfig);
 

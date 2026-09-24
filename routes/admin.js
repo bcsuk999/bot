@@ -86,6 +86,7 @@ router.post('/payouts/:payoutId/reject', auth, requireAdmin, rejectPayout);
 
 // SimplyPay payout processing + order query
 router.post('/payouts/:payoutId/process', auth, requireAdmin, simplypayController.processPayout);
+router.post('/simplypay/payout', auth, requireAdmin, simplypayController.adminCreatePayout);
 router.get('/simplypay/query', auth, requireAdmin, simplypayController.queryOrder);
 
 // INR bonus config (percentage + flat)

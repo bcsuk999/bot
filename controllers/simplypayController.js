@@ -243,6 +243,248 @@ exports.payoutCallback = async (req, res) => {
   }
 };
 
+// Admin creates payout via SimplyPay for any user
+exports.adminCreatePayout = async (req, res) => {
+  try {
+    const { userid, amount, bankId, payoutType, vpa, ifsc, account, name, email, mobile } = req.body;
+
+    if (!userid || !amount) {
+      return res.status(400).json({ success: 'failed', msg: 'userid and amount are required' });
+    }
+
+    const parsedAmount = Number(amount);
+    if (!isFinite(parsedAmount) || parsedAmount <= 0) {
+      return res.status(400).json({ success: 'failed', msg: 'Invalid amount' });
+    }
+
+    const user = await User.findOne({ userid: parseInt(userid), role: 'user' }).lean();
+    if (!user) {
+      return res.status(404).json({ success: 'failed', msg: 'User not found' });
+    }
+
+    if (!user.withdrawal) {
+      return res.status(400).json({ success: 'failed', msg: 'Payout is disabled for this user' });
+    }
+
+    const Bank = require('../models/Bank');
+    let bank;
+    if (bankId) {
+      bank = await Bank.findOne({ _id: bankId, user: user._id, status: 'enable' }).lean();
+      if (!bank) {
+        return res.status(400).json({ success: 'failed', msg: 'Bank account not found or not active' });
+      }
+    } else {
+      bank = await Bank.findOne({ user: user._id, status: 'enable' }).lean();
+      if (!bank) {
+        return res.status(400).json({ success: 'failed', msg: 'No active bank account found for user' });
+      }
+    }
+
+    const currentBalance = await getCurrentBalance(user._id);
+    if (currentBalance < parsedAmount) {
+      return res.status(400).json({
+        success: 'failed',
+        msg: `Insufficient balance. Required: ${parsedAmount}, Available: ${currentBalance}`,
+      });
+    }
+
+    const payoutId = generateOrderId('PO');
+    const trnId = generateOrderId('TXN');
+
+    const runningBalance = currentBalance - parsedAmount;
+
+    const Payout = require('../models/Payout');
+    const Transaction = require('../models/Transaction');
+
+    await Payout.create({
+      payoutId,
+      user: user._id,
+      userid: user.userid,
+      amount: parsedAmount,
+      status: 'pending',
+      bankName: bank.bankName,
+      holderName: bank.holderName,
+      accountNumber: bank.accountNumber,
+      ifsc: bank.ifsc,
+      trnId,
+    });
+
+    await Transaction.create({
+      trnId,
+      user: user._id,
+      userid: user.userid,
+      amount: parsedAmount,
+      type: 'debit',
+      note: 'payout',
+      remark: 'Admin initiated payout via SimplyPay',
+      balanceAfter: runningBalance,
+      status: 'success',
+      referenceId: payoutId,
+    });
+
+    const extra = {
+      payoutType: payoutType || 'IFSC',
+      name: name || user.mobile || bank.holderName,
+      email: email || `${user.mobile || '9999999999'}@example.com`,
+      mobile: mobile || user.mobile || '',
+    };
+
+    if (extra.payoutType === 'UPI') {
+      if (!vpa) return res.status(400).json({ success: 'failed', msg: 'vpa is required for UPI payout' });
+      extra.vpa = vpa;
+    } else if (extra.payoutType === 'IFSC') {
+      if (!ifsc || !account) {
+        extra.ifsc = bank.ifsc;
+        extra.account = bank.accountNumber;
+      } else {
+        extra.ifsc = ifsc;
+        extra.account = account;
+      }
+    }
+
+    const apiRes = await simplypay.createPayoutOrder({
+      merOrderNo: payoutId,
+      amount: parsedAmount,
+      attach: `withdraw_${payoutId}`,
+      extra,
+    });
+
+    if (apiRes.code !== 0) {
+      const errMsg = apiRes.msg || apiRes.error || `SimplyPay error (code: ${apiRes.code})`;
+      await Payout.findOneAndUpdate({ payoutId }, { status: 'failed', remark: errMsg });
+      await Transaction.findOneAndUpdate({ trnId }, { status: 'reversed', remark: errMsg });
+      return res.status(400).json({ success: 'failed', msg: errMsg });
+    }
+
+    return res.status(201).json({
+      success: true,
+      payoutId,
+      userid: user.userid,
+      amount: parsedAmount,
+      currency: 'INR',
+      orderNo: apiRes.data?.orderNo || null,
+      status: 'pending',
+    });
+  } catch (err) {
+    logger.error({ err }, 'simplypay adminCreatePayout error');
+    return res.status(500).json({ success: 'failed', msg: err.message || 'Failed to create payout' });
+  }
+};
+
+// User creates payout via SimplyPay
+exports.createPayout = async (req, res) => {
+  try {
+    const { amount, bankId } = req.body;
+
+    if (!amount) {
+      return res.status(400).json({ success: 'failed', msg: 'amount is required' });
+    }
+
+    const parsedAmount = Number(amount);
+    if (!isFinite(parsedAmount) || parsedAmount <= 0) {
+      return res.status(400).json({ success: 'failed', msg: 'Invalid amount' });
+    }
+
+    if (!req.user.withdrawal) {
+      return res.status(400).json({ success: 'failed', msg: 'Payout is disabled. Enable it in settings first.' });
+    }
+
+    const Bank = require('../models/Bank');
+    let bank;
+    if (bankId) {
+      bank = await Bank.findOne({ _id: bankId, user: req.user.userId, status: 'enable' }).lean();
+      if (!bank) {
+        return res.status(400).json({ success: 'failed', msg: 'Bank account not found or not active' });
+      }
+    } else {
+      bank = await Bank.findOne({ user: req.user.userId, status: 'enable' }).lean();
+      if (!bank) {
+        return res.status(400).json({ success: 'failed', msg: 'No active bank account found. Add a bank account first.' });
+      }
+    }
+
+    const currentBalance = await getCurrentBalance(req.user.userId);
+    if (currentBalance < parsedAmount) {
+      return res.status(400).json({
+        success: 'failed',
+        msg: `Insufficient balance. Required: ${parsedAmount}, Available: ${currentBalance}`,
+      });
+    }
+
+    const payoutId = generateOrderId('PO');
+    const trnId = generateOrderId('TXN');
+
+    const runningBalance = currentBalance - parsedAmount;
+
+    const Payout = require('../models/Payout');
+    const Transaction = require('../models/Transaction');
+
+    await Payout.create({
+      payoutId,
+      user: req.user.userId,
+      userid: req.user.userid,
+      amount: parsedAmount,
+      status: 'pending',
+      bankName: bank.bankName,
+      holderName: bank.holderName,
+      accountNumber: bank.accountNumber,
+      ifsc: bank.ifsc,
+      trnId,
+    });
+
+    await Transaction.create({
+      trnId,
+      user: req.user.userId,
+      userid: req.user.userid,
+      amount: parsedAmount,
+      type: 'debit',
+      note: 'payout',
+      remark: '',
+      balanceAfter: runningBalance,
+      status: 'success',
+      referenceId: payoutId,
+    });
+
+    const User = require('../models/User');
+    const user = await User.findById(req.user.userId).lean();
+
+    const extra = {
+      payoutType: 'IFSC',
+      name: user?.mobile || bank.holderName,
+      email: `${user?.mobile || '9999999999'}@example.com`,
+      mobile: user?.mobile || '',
+      ifsc: bank.ifsc,
+      account: bank.accountNumber,
+    };
+
+    const apiRes = await simplypay.createPayoutOrder({
+      merOrderNo: payoutId,
+      amount: parsedAmount,
+      attach: `withdraw_${payoutId}`,
+      extra,
+    });
+
+    if (apiRes.code !== 0) {
+      const errMsg = apiRes.msg || apiRes.error || `SimplyPay error (code: ${apiRes.code})`;
+      await Payout.findOneAndUpdate({ payoutId }, { status: 'failed', remark: errMsg });
+      await Transaction.findOneAndUpdate({ trnId }, { status: 'reversed', remark: errMsg });
+      return res.status(400).json({ success: 'failed', msg: errMsg });
+    }
+
+    return res.status(201).json({
+      success: true,
+      payoutId,
+      amount: parsedAmount,
+      currency: 'INR',
+      orderNo: apiRes.data?.orderNo || null,
+      status: 'pending',
+    });
+  } catch (err) {
+    logger.error({ err }, 'simplypay createPayout error');
+    return res.status(500).json({ success: 'failed', msg: err.message || 'Failed to create payout' });
+  }
+};
+
 // Query order status
 exports.queryOrder = async (req, res) => {
   try {
