@@ -6,6 +6,7 @@ let config = null;
 let running = false;
 let registered = false;
 let lastError = null;
+let configProblems = null;
 
 function getClient() {
   return client;
@@ -33,9 +34,13 @@ async function startBot() {
 
   const problems = validateConfig(config);
   if (problems.length) {
+    // Surface the reason on /api/bot/health. Without this, a misconfigured
+    // deployment just reports running:false with no explanation.
+    configProblems = problems;
     problems.forEach((p) => logger.error({ problem: p }, 'bot: invalid configuration'));
     return { started: false, reason: 'invalid_config', problems };
   }
+  configProblems = null;
 
   try {
     const TelegramBot = require('node-telegram-bot-api');
@@ -114,6 +119,7 @@ function health() {
     username: config?.botUsername || null,
     allowedGroupCount: config ? config.allowedGroupIds.size + config.allowedGroupUsernames.size : 0,
     lastError,
+    configProblems,
   };
 }
 
