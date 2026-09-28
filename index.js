@@ -6,8 +6,11 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const userRouter = require('./routes/user');
 const adminRouter = require('./routes/admin');
+const botRouter = require('./routes/bot');
 const simplypayController = require('./controllers/simplypayController');
+const botWebhookController = require('./controllers/botWebhookController');
 const connectDB = require('./db/conn');
+const { startBot, stopBot, processWebhookUpdate } = require('./services/bot/client');
 const logger = require('./utils/logger');
 
 const app = express();
@@ -38,15 +41,29 @@ app.use(
 );
 app.use(express.json({ type: '*/*' }));
 
-connectDB();
-
 app.use('/api/user', userRouter);
 app.use('/apii/user', userRouter); // alias for typo /apii/user/payin/exchange
 app.use('/api/admin', adminRouter);
+app.use('/api/bot', botRouter);
 
 // SimplyPay webhook callbacks (no auth - called by gateway)
 app.post('/webhook/simplypay/payin', simplypayController.payinCallback);
 app.post('/webhook/simplypay/payout', simplypayController.payoutCallback);
+app.post('/webhook/simplypay/bot', botWebhookController.botPayinCallback);
+
+// Telegram update receiver for BOT_MODE=webhook. The secret in the path is the
+// only thing stopping anyone on the internet from POSTing forged updates, so it
+// is compared before anything is handed to the bot.
+app.post('/bot/telegram/:secret', (req, res) => {
+  const expected = process.env.BOT_WEBHOOK_SECRET;
+  if (!expected || req.params.secret !== expected) {
+    return res.status(403).json({ success: 'failed', msg: 'Forbidden' });
+  }
+  if (!processWebhookUpdate(req.body)) {
+    return res.status(503).json({ success: 'failed', msg: 'Bot not running' });
+  }
+  return res.status(200).json({ success: true });
+});
 
 app.get('/', (req, res) => {
   res.status(200).json({
@@ -66,4 +83,17 @@ const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   logger.info({ port: PORT }, 'Server running');
+});
+
+// Bot starts only after the DB is connected. A bot failure must not take the
+// HTTP server down, so startBot never throws.
+connectDB()
+  .then(() => startBot())
+  .catch((err) => logger.error({ err }, 'Bot start skipped (DB not ready)'));
+
+process.on('SIGTERM', () => {
+  stopBot().finally(() => process.exit(0));
+});
+process.on('SIGINT', () => {
+  stopBot().finally(() => process.exit(0));
 });

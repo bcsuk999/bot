@@ -9,7 +9,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "test": "vitest run"
+    "test": "node tests/requireAll.cjs && vitest run",
+    "test:modules": "node tests/requireAll.cjs"
   },
   "keywords": [],
   "author": "",
@@ -22,6 +23,7 @@
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.9.3",
+    "node-telegram-bot-api": "0.67.0",
     "pino": "^10.3.1"
   },
   "devDependencies": {

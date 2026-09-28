@@ -1,0 +1,102 @@
+const mongoose = require('mongoose');
+
+// A group deposit order. No bonus: receivedAmount always equals amount.
+// The gateway is the only thing that can expire an order - there is no
+// expiresAt field, no TTL index and no auto-cancel job.
+const botOrderSchema = new mongoose.Schema(
+  {
+    orderId: {
+      type: String,
+      unique: true,
+      index: true,
+      required: true,
+    },
+    group: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'TelegramGroup',
+      required: true,
+      index: true,
+    },
+    groupId: {
+      type: String,
+      index: true,
+    },
+    amount: {
+      type: mongoose.Schema.Types.Decimal128,
+      required: true,
+      get: (v) => (v ? parseFloat(v.toString()) : v),
+    },
+    receivedAmount: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: null,
+      get: (v) => (v ? parseFloat(v.toString()) : v),
+    },
+    currency: {
+      type: String,
+      enum: ['INR'],
+      default: 'INR',
+    },
+    network: {
+      type: String,
+      default: 'SPAY',
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'success', 'failed', 'expired', 'reversed'],
+      default: 'pending',
+      index: true,
+    },
+    // `pa` parsed out of the gateway's upi:// deep link
+    upiId: {
+      type: String,
+      default: null,
+    },
+    deepLink: {
+      type: String,
+      default: null,
+    },
+    paymentLink: {
+      type: String,
+      default: null,
+    },
+    simplypayOrderNo: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    // Set once the order is credited - links to the BotTransaction row
+    trnId: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    // AUDIT ONLY - who typed /deposit. Never used for wallet lookup or authorization.
+    requestedBy: {
+      type: Number,
+      default: null,
+    },
+    requestedByUsername: {
+      type: String,
+      default: '',
+    },
+    remark: {
+      type: String,
+      default: '',
+    },
+    paidAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  {
+    timestamps: true,
+    toJSON: { getters: true },
+    toObject: { getters: true },
+  }
+);
+
+botOrderSchema.index({ group: 1, status: 1 });
+botOrderSchema.index({ group: 1, createdAt: -1 });
+botOrderSchema.index({ status: 1, createdAt: -1 });
+
+module.exports = mongoose.model('BotOrder', botOrderSchema);
