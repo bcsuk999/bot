@@ -1,6 +1,6 @@
 const botGroupService = require('../../botGroupService');
 const { getGroupOrderCounts } = require('../stats');
-const { formatInr, label } = require('../format');
+const { formatInr } = require('../format');
 
 async function cmdBalance(ctx) {
   const { group } = ctx;
@@ -11,14 +11,14 @@ async function cmdBalance(ctx) {
 
   return {
     text: [
-      '💰 Group Balance',
+      'Group balance',
       '',
-      `${label('Group ID')}         : ${group.groupId}`,
-      `${label('Balance')}          : ${formatInr(balance)}`,
-      `${label('Total Credited')}   : ${formatInr(group.totalCredited || 0)}`,
-      `${label('Successful Orders')}: ${counts.success}`,
-      `${label('Failed Orders')}    : ${counts.failed + counts.expired}`,
-      `${label('Pending Orders')}   : ${counts.pending}`,
+      `Group ID: ${group.groupId}`,
+      `Balance: ${formatInr(balance)}`,
+      `Total credited: ${formatInr(group.totalCredited || 0)}`,
+      `Successful orders: ${counts.success}`,
+      `Failed orders: ${counts.failed + counts.expired}`,
+      `Pending orders: ${counts.pending}`,
     ].join('\n'),
   };
 }

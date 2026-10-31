@@ -83,14 +83,14 @@ function buildBucket(byStatus = {}) {
 
 function renderBucket(title, bucket) {
   return [
-    `── ${title} ${'─'.repeat(Math.max(0, 20 - title.length))}`,
-    `${label('Total Orders')}: ${bucket.totalOrders}`,
-    `${label('Total Amount')}: ${formatInr(bucket.totalAmount)}`,
-    `${label('✅ Success')}   : ${bucket.success.count}  (${formatInr(bucket.success.amount)})`,
-    `${label('⏳ Pending')}   : ${bucket.pending.count}  (${formatInr(bucket.pending.amount)})`,
-    `${label('❌ Failed')}    : ${bucket.failed.count}  (${formatInr(bucket.failed.amount)})`,
-    `${label('⌛ Expired')}   : ${bucket.expired.count}  (${formatInr(bucket.expired.amount)})`,
-    `${label('↩️ Reversed')}  : ${bucket.reversed.count}  (${formatInr(bucket.reversed.amount)})`,
+    title,
+    `Total orders: ${bucket.totalOrders}`,
+    `Total amount: ${formatInr(bucket.totalAmount)}`,
+    `Success: ${bucket.success.count} (${formatInr(bucket.success.amount)})`,
+    `Pending: ${bucket.pending.count} (${formatInr(bucket.pending.amount)})`,
+    `Failed: ${bucket.failed.count} (${formatInr(bucket.failed.amount)})`,
+    `Expired: ${bucket.expired.count} (${formatInr(bucket.expired.amount)})`,
+    `Reversed: ${bucket.reversed.count} (${formatInr(bucket.reversed.amount)})`,
   ].join('\n');
 }
 

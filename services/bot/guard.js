@@ -69,18 +69,18 @@ async function alertOwner(ctx = {}, reason, config = {}, client = null) {
   if (!client || !config.ownerId) return false;
 
   const text = [
-    '🚨 <b>Unauthorized bot access</b>',
+    'Unauthorized bot access',
     '',
-    `Chat ID       : ${escapeHtmlAll(chat.id ?? '-')}`,
-    `Chat Type     : ${escapeHtmlAll(chat.type ?? '-')}`,
-    `Chat Title    : ${escapeHtmlAll(chat.title || '-')}`,
-    `Chat Username : ${escapeHtmlAll(chat.username || '-')}`,
-    `User ID       : ${escapeHtmlAll(from.id ?? '-')}`,
-    `Username      : ${escapeHtmlAll(from.username || '-')}`,
-    `First Name    : ${escapeHtmlAll(from.first_name || '-')}`,
-    `Command       : ${escapeHtmlAll(command || '-')}`,
-    `Reason        : ${escapeHtmlAll(reason)}`,
-    `Time (IST)    : ${formatIst()}`,
+    `Chat ID: ${escapeHtmlAll(chat.id ?? '-')}`,
+    `Chat type: ${escapeHtmlAll(chat.type ?? '-')}`,
+    `Chat title: ${escapeHtmlAll(chat.title || '-')}`,
+    `Chat username: ${escapeHtmlAll(chat.username || '-')}`,
+    `User ID: ${escapeHtmlAll(from.id ?? '-')}`,
+    `Username: ${escapeHtmlAll(from.username || '-')}`,
+    `First name: ${escapeHtmlAll(from.first_name || '-')}`,
+    `Command: ${escapeHtmlAll(command || '-')}`,
+    `Reason: ${escapeHtmlAll(reason)}`,
+    `Time (IST): ${formatIst()}`,
   ].join('\n');
 
   try {

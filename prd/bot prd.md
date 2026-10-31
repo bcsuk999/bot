@@ -182,18 +182,18 @@ The `groupId` in the message is the sole key — `upsert` matches on `groupId` a
 **Response (first registration):**
 
 ```
-✅ Group Registered
+Group registered
 
-Group ID      : -1001234567890
-Group Title   : SubnPay Deposits
-Balance       : ₹0.00
-Registered At : 2026-09-28 10:15 IST
-Registered By : @adminuser (987654321)
+Group ID: -1001234567890
+Title: SubnPay Deposits
+Balance: ₹0.00
+Registered at: 2026-09-28 10:15 IST
+Registered by: @adminuser (987654321)
 
 Commands:
-/balance  - Check group balance
-/deposit  - Create a deposit
-/daily    - Deposit statistics
+/balance - Check this group balance
+/deposit <amount> - Create a deposit
+/daily   - This group deposit statistics
 ```
 
 `Registered By` is audit information about who typed the command. The member itself is the `Group ID` line — that is the identifier every later command, query and balance lookup uses.
@@ -205,14 +205,14 @@ Returns HTTP-equivalent payload `groupId`, `title`, `username`, `balance`, `regi
 Private-chat variant (`/balance <groupId>`) is owner/admin only, so support can answer DMs.
 
 ```
-💰 Group Balance
+Group balance
 
-Group ID        : -1001234567890
-Balance         : ₹12,500.00
-Total Credited  : ₹25,000.00
-Successful Orders : 7
-Failed Orders      : 1
-Pending Orders     : 2
+Group ID: -1001234567890
+Balance: ₹12,500.00
+Total credited: ₹25,000.00
+Successful orders: 7
+Failed orders: 1
+Pending orders: 2
 ```
 
 ### 6.4 `/deposit <amount>` — create a deposit
@@ -234,13 +234,12 @@ Order ID: B20260928093925967924200
 Amount to pay: ₹400.00
 UPI ID: merchant@paytm
 
-[ Copy order ID ]
 [ Copy amount ]
 [ Copy UPI ID ]
 [ Pay now ]     ← inline url button, only when the gateway returns an http(s) link
 ```
 
-The order id and UPI id are wrapped in `<code>`, so tapping the value copies it as well (`copy_text` buttons, Bot API 7.11+). "Copy amount" copies the plain number (`400.00`), without the `₹`.
+`Amount to pay` is the **deep-link amount** (`am` from `data.params.deepLink`), because that is the figure the UPI app prefills. The amount typed after `/deposit` is used only when the link carries no usable `am`. The order id and UPI id are wrapped in `<code>`, so tapping the value copies it as well (`copy_text` buttons, Bot API 7.11+). "Copy amount" copies the plain number (`400.00`), without the `₹` or thousands separators. There is deliberately no "Copy order ID" button — the order id stays tap-to-copy text only.
 
 `Pay now` is kept even though the body shows only three details: it is the only link that ties the payment back to `orderId`, and paying the bare UPI id does not produce a matching gateway callback.
 
@@ -253,28 +252,32 @@ Reports the deposit activity of the group it is invoked in. **Today (IST, midnig
 Scoped strictly to the invoking group's `_id` — one group can never see another's numbers. The REST equivalent is `GET /api/bot/stats/:groupId?window=today|all`.
 
 ```
-📊 Daily Report — -1001234567890 (SubnPay Deposits)
+Daily report — -1001234567890 (SubnPay Deposits)
 
-── Today (IST) ──────────────
-Total Orders  : 12
-Total Amount  : ₹18,400.00
-✅ Success    : 9  (₹13,900.00)
-⏳ Pending    : 2  (₹2,500.00)
-❌ Failed     : 1  (₹2,000.00)
+Today (IST)
+Total orders: 12
+Total amount: ₹18,400.00
+Success: 9 (₹13,900.00)
+Pending: 2 (₹2,500.00)
+Failed: 1 (₹2,000.00)
+Expired: 0 (₹0.00)
+Reversed: 0 (₹0.00)
 
-── All Time ────────────────
-Total Orders  : 148
-Total Amount  : ₹312,750.00
-✅ Success    : 131 (₹276,400.00)
-⏳ Pending    : 9   (₹21,350.00)
-❌ Failed     : 8   (₹15,000.00)
+All time
+Total orders: 148
+Total amount: ₹312,750.00
+Success: 131 (₹276,400.00)
+Pending: 9 (₹21,350.00)
+Failed: 8 (₹15,000.00)
+Expired: 0 (₹0.00)
+Reversed: 0 (₹0.00)
 
-Current Balance : ₹91,200.00
+Current balance: ₹91,200.00
 ```
 
 Optional args: `/daily today` (today block only), `/daily all` (all-time block only), `/daily` (both, as shown).
 
-"Total Amount" = sum of `amount` across all orders in the window. `₹` formatting via `Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })`.
+"Total amount" = sum of `amount` across all orders in the window. `₹` formatting via `Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })`.
 
 **Today window** = midnight IST to now. Computed timezone-safe:
 
@@ -311,18 +314,18 @@ Group-level commands (`/balance`, `/deposit`, `/daily`) additionally require a `
 Sent via `bot.sendMessage(TELEGRAM_OWNER_ID, ...)` with `parse_mode: 'HTML'`:
 
 ```
-🚨 <b>Unauthorized bot access</b>
+Unauthorized bot access
 
-Chat ID       : -1009998887776
-Chat Type     : supergroup
-Chat Title    : Random Group
-Chat Username : @randomgroup
-User ID       : 5551234567
-Username      : @someone
-First Name    : Some
-Command       : /deposit 500
-Reason        : chat_not_allowlisted
-Time (IST)    : 2026-09-28 10:15:00
+Chat ID: -1009998887776
+Chat type: supergroup
+Chat title: Random Group
+Chat username: @randomgroup
+User ID: 5551234567
+Username: @someone
+First name: Some
+Command: /deposit 500
+Reason: chat_not_allowlisted
+Time (IST): 2026-09-28 10:15:00
 ```
 
 The offending chat id and user id are both reported, as requested. Sent once per violating message.
@@ -365,7 +368,7 @@ New unauthenticated route: `POST /webhook/simplypay/bot` → `controllers/botWeb
 | `0`, `1` (pending) | No-op, `200` |
 | anything else | No-op, `200`, log at `warn` with the raw code |
 
-**Expiry rule:** there is no client-side or server-side timeout. An order stays `pending` until SimplyPay itself reports it as expired. No cron job, no TTL index, no `expiresAt` field, and no admin-side auto-cancel. This means a SimplyPay order that is never paid and never expired will keep sitting in the `pending` count on `/daily` — that is the intended behaviour, and it is why the `⏳ Pending` figure is reported as a raw count rather than treated as a problem. Admin can still force-close one via `POST /api/bot/orders/:orderId/reject`.
+**Expiry rule:** there is no client-side or server-side timeout. An order stays `pending` until SimplyPay itself reports it as expired. No cron job, no TTL index, no `expiresAt` field, and no admin-side auto-cancel. This means a SimplyPay order that is never paid and never expired will keep sitting in the `pending` count on `/daily` — that is the intended behaviour, and it is why the `Pending` figure is reported as a raw count rather than treated as a problem. Admin can still force-close one via `POST /api/bot/orders/:orderId/reject`.
 
 **The expired status code is configuration, not a guess.** `SIMPLYPAY_EXPIRED_STATUSES` is a comma-separated list that is **empty by default**. `-4` is listed as PENDING in the SimplyPay status table in `services/simplypay.apidoc.md`, which documents no expired code at all, and the existing `payinCallback` treats `-4` as neither success nor failure. Hardcoding `-4` as expired would mark a live payment expired and never credit it — a silently lost deposit. Until the real code is confirmed with the gateway, an unknown code leaves the order `pending`, which is recoverable. Set the confirmed code(s) in `.env` to enable the `expired` state.
 

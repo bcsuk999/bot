@@ -1,5 +1,5 @@
 const botGroupService = require('../../botGroupService');
-const { formatInr, formatIst, label } = require('../format');
+const { formatInr, formatIst } = require('../format');
 const { helpText } = require('./help');
 const logger = require('../../../utils/logger');
 
@@ -17,19 +17,19 @@ async function cmdReg(ctx) {
   });
 
   if (blocked) {
-    return { text: '🚫 This group is blocked. Contact the owner.', shouldAlert: true, reason: 'banned_group' };
+    return { text: 'This group is blocked. Contact the owner.', shouldAlert: true, reason: 'banned_group' };
   }
 
   const balance = await botGroupService.getGroupBalance(member._id);
 
   const text = [
-    alreadyRegistered ? '✅ Group Already Registered' : '✅ Group Registered',
+    alreadyRegistered ? 'Group already registered' : 'Group registered',
     '',
-    `${label('Group ID')}     : ${member.groupId}`,
-    `${label('Group Title')}  : ${member.title || '-'}`,
-    `${label('Balance')}      : ${formatInr(balance)}`,
-    `${label('Registered At')}: ${formatIst(member.createdAt)}`,
-    `${label('Registered By')}: ${from?.username ? `@${from.username} (${from.id})` : from?.id || '-'}`,
+    `Group ID: ${member.groupId}`,
+    `Title: ${member.title || '-'}`,
+    `Balance: ${formatInr(balance)}`,
+    `Registered at: ${formatIst(member.createdAt)}`,
+    `Registered by: ${from?.username ? `@${from.username} (${from.id})` : from?.id || '-'}`,
     '',
     helpText(),
   ].join('\n');

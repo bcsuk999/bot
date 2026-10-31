@@ -1,5 +1,5 @@
 const BotOrder = require('../../models/BotOrder');
-const { startOfIstDay, buildBucket, renderBucket, formatInr, label } = require('./format');
+const { startOfIstDay, buildBucket, renderBucket, formatInr } = require('./format');
 
 // Group a set of BotOrders by status: count + sum of amount.
 function bucketStage() {
@@ -48,7 +48,7 @@ async function getGroupOrderCounts(groupId) {
 }
 
 function renderStatsReport({ groupId, title, today, all, balance, window = 'both' }) {
-  const head = `📊 Daily Report — ${groupId}${title ? ` (${title})` : ''}`;
+  const head = `Daily report — ${groupId}${title ? ` (${title})` : ''}`;
 
   const blocks = [];
   if (window === 'both' || window === 'today') {
@@ -56,11 +56,11 @@ function renderStatsReport({ groupId, title, today, all, balance, window = 'both
   }
   if (window === 'both' || window === 'all') {
     if (blocks.length) blocks.push('');
-    blocks.push(renderBucket('All Time', all));
+    blocks.push(renderBucket('All time', all));
   }
 
   blocks.push('');
-  blocks.push(`${label('Current Balance')}: ${formatInr(balance)}`);
+  blocks.push(`Current balance: ${formatInr(balance)}`);
 
   return [head, '', ...blocks].join('\n');
 }

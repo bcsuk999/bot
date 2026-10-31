@@ -35,13 +35,13 @@ function parseDepositAmount(raw, { min, max }) {
 function amountRejection(parsed) {
   switch (parsed.reason) {
     case 'usage':
-      return '❌ Usage: <code>/deposit &lt;amount&gt;</code>\nExample: <code>/deposit 400</code>';
+      return 'Usage: /deposit <amount>\nExample: /deposit 400';
     case 'below_min':
-      return `❌ Minimum deposit is ${formatInr(parsed.min)}.`;
+      return `Minimum deposit is ${formatInr(parsed.min)}.`;
     case 'above_max':
-      return `❌ Maximum deposit is ${formatInr(parsed.max)}.`;
+      return `Maximum deposit is ${formatInr(parsed.max)}.`;
     default:
-      return '❌ Invalid amount. Use a plain number, e.g. <code>/deposit 400</code>';
+      return 'Invalid amount. Use a plain number, e.g. /deposit 400';
   }
 }
 
@@ -89,18 +89,17 @@ async function cmdDeposit(ctx) {
     order.remark = `Gateway request error: ${err.message}`;
     await order.save();
     await alertOwner(ctx, 'gateway_request_error', config, client);
-    return { text: '❌ Payment gateway is unreachable. Please try again shortly.' };
+    return { text: 'Payment gateway is unreachable. Please try again shortly.' };
   }
 
   if (!apiRes || apiRes.code !== 0) {
-    // Gateway text is untrusted and this reply is sent with parse_mode HTML, so
-    // it must be escaped or a stray '<' makes Telegram reject the whole message.
+    // Plain-text reply (no parse_mode), so the gateway message is shown as-is.
     const errMsg = apiRes?.msg || apiRes?.error || `SimplyPay error (code: ${apiRes?.code})`;
     order.status = 'failed';
     order.remark = errMsg;
     await order.save();
     await alertOwner(ctx, `gateway_error: ${errMsg}`, config, client);
-    return { text: `❌ Payment gateway error: ${escapeHtml(errMsg)}` };
+    return { text: `Payment gateway error: ${errMsg}` };
   }
 
   const deepLink = apiRes.data?.params?.deepLink || null;
@@ -114,7 +113,11 @@ async function cmdDeposit(ctx) {
   if (!deepLink) order.remark = 'No upi deep link; gateway web link only';
   await order.save();
 
-  const reply = buildDepositReply({ orderId, amount, upiId: parsedLink.valid ? parsedLink.upiId : null });
+  // Show the amount carried by the gateway deep link (`am`), because that is the
+  // figure the UPI app will prefill. Fall back to the requested amount only when
+  // the link has no usable `am`.
+  const payAmount = parsedLink.upiAmount ?? amount;
+  const reply = buildDepositReply({ orderId, amount: payAmount, upiId: parsedLink.valid ? parsedLink.upiId : null });
 
   // The gateway payment link is the only way a payment gets tied back to this
   // order, so it stays as an action button even though the message body carries
@@ -131,8 +134,9 @@ async function cmdDeposit(ctx) {
 /**
  * The /deposit reply: order id, amount to pay and UPI id, nothing else.
  * No emoji, no status line - it should read like a payment slip, not a bot.
- * Every value has an explicit copy button (Telegram copy_text), and the order
- * id / UPI id are rendered as <code> so tapping the text copies it too.
+ * `amount` is the deep-link amount (what the UPI app prefills), not necessarily
+ * the amount typed after /deposit. Amount and UPI id get copy buttons; the order
+ * id is only rendered as <code> (tap to copy).
  *
  * @returns {{ text: string, options: object }}
  */
@@ -144,8 +148,7 @@ function buildDepositReply({ orderId, amount, upiId }) {
   ].join('\n');
 
   const keyboard = [
-    [{ text: 'Copy order ID', copy_text: { text: String(orderId) } }],
-    [{ text: 'Copy amount', copy_text: { text: formatAmount(amount) } }],
+    [{ text: 'Copy amount', copy_text: { text: formatAmount(amount).replace(/,/g, '') } }],
   ];
   if (upiId) keyboard.push([{ text: 'Copy UPI ID', copy_text: { text: String(upiId) } }]);
 

@@ -1,5 +1,5 @@
 const botGroupService = require('../../botGroupService');
-const { formatInr, label } = require('../format');
+const { formatInr } = require('../format');
 const { helpText } = require('./help');
 
 async function cmdStart(ctx) {
@@ -9,17 +9,17 @@ async function cmdStart(ctx) {
     const balance = await botGroupService.getGroupBalance(group._id);
     return {
       text: [
-        '👋 This group is registered.',
+        'Group registered',
         '',
-        `${label('Group ID')}: ${group.groupId}`,
-        `${label('Balance')}  : ${formatInr(balance)}`,
+        `Group ID: ${group.groupId}`,
+        `Balance: ${formatInr(balance)}`,
         '',
         helpText(),
       ].join('\n'),
     };
   }
 
-  return { text: `👋 This group is authorised.\n\nRun /reg to create its wallet.\n\n${helpText()}` };
+  return { text: `This group is authorised. Run /reg to create its wallet.\n\n${helpText()}` };
 }
 
 module.exports = { cmdStart };

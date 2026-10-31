@@ -134,12 +134,13 @@ describe('renderBucket', () => {
       failed: { count: 1, amount: 2000 },
     }));
     expect(text).toContain('Today (IST)');
-    expect(text).toContain('Total Orders');
+    expect(text).toContain('Total orders');
     expect(text).toContain('12');
     expect(text).toContain('₹18,400.00');
-    expect(text).toContain('✅ Success');
-    expect(text).toContain('⏳ Pending');
-    expect(text).toContain('❌ Failed');
+    expect(text).toContain('Success: 9');
+    expect(text).toContain('Pending: 2');
+    expect(text).toContain('Failed: 1');
+    expect(text).not.toMatch(/[✅⏳❌]/);
   });
 });
 
@@ -153,28 +154,28 @@ describe('renderStatsReport', () => {
 
   it('shows both blocks plus the balance by default', () => {
     const text = renderStatsReport({ groupId: '-1001234567890', title: 'SubnPay', today, all, balance: 91200 });
-    expect(text).toContain('📊 Daily Report — -1001234567890 (SubnPay)');
+    expect(text).toContain('Daily report — -1001234567890 (SubnPay)');
     expect(text).toContain('Today (IST)');
-    expect(text).toContain('All Time');
-    expect(text).toContain('Current Balance');
+    expect(text).toContain('All time');
+    expect(text).toContain('Current balance');
     expect(text).toContain('₹91,200.00');
   });
 
   it('renders only the today block when asked', () => {
     const text = renderStatsReport({ groupId: 'g', today, all, balance: 1, window: 'today' });
     expect(text).toContain('Today (IST)');
-    expect(text).not.toContain('All Time');
+    expect(text).not.toContain('All time');
   });
 
   it('renders only the all-time block when asked', () => {
     const text = renderStatsReport({ groupId: 'g', today, all, balance: 1, window: 'all' });
     expect(text).not.toContain('Today (IST)');
-    expect(text).toContain('All Time');
+    expect(text).toContain('All time');
   });
 
   it('omits the title segment when there is none', () => {
     const text = renderStatsReport({ groupId: 'g', today, all, balance: 0, window: 'all' });
-    expect(text).toContain('📊 Daily Report — g');
+    expect(text).toContain('Daily report — g');
   });
 });
 
