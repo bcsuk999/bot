@@ -26,8 +26,9 @@ A Telegram bot that treats each Telegram **group as a wallet/member**. A group (
 | G2 | Any member of a registered group can read that group's balance via `/balance` |
 | G3 | Any member can create a deposit via `/deposit <amount>` and get a UPI id + amount back from the SimplyPay deep link |
 | G4 | Per-group daily stats (`/daily`): that group's total orders, total amount, success, pending, failed — today (IST) as the headline, all-time as context |
-| G5 | Any command attempt from a chat outside a configured allowlist (or any private DM from a stranger) is denied and the owner is DM'd the offending chat id, user id, and command |
-| G6 | A REST API to inspect groups, orders, stats, and manually adjust balances |
+| G5 | Any member can check one order with `/status <order id>`: order id, amount, status, created time, and the success time once credited |
+| G6 | Any command attempt from a chat outside a configured allowlist (or any private DM from a stranger) is denied and the owner is DM'd the offending chat id, user id, and command |
+| G7 | A REST API to inspect groups, orders, stats, and manually adjust balances |
 
 ## 3. Non-Goals
 
@@ -156,7 +157,7 @@ All handlers live in `services/bot/handlers/`. Every command runs through the gu
 
 | Scope | Commands shown |
 |---|---|
-| `all_group_chats` | `/start`, `/balance`, `/deposit`, `/daily` — **`/reg` is not listed** |
+| `all_group_chats` | `/start`, `/balance`, `/deposit`, `/status`, `/daily` — **`/reg` is not listed** |
 | `chat` = `TELEGRAM_OWNER_ID` | `/start`, `/reg` |
 
 So in any group, typing `/` lists only the member commands; a normal user is never shown that registration exists. `/reg` appears only in the owner's private chat, where it replies `Run /reg inside the group you want to register.` — the wallet belongs to a group, not to a person. The group help block likewise omits `/reg`; only the owner's DM help includes it. `setMyCommands` is best-effort: a failure (e.g. the owner has never started the bot, so the chat does not exist yet) is logged and never blocks startup, and re-publishing runs on the next restart.
@@ -292,6 +293,29 @@ function startOfIstDay(now = new Date()) {
 ```
 
 Implementation: one Mongo `$facet` aggregation over `BotOrder` filtered by `{ group, createdAt: { $gte: startOfIstDay() } }` and `{ group }`, with `$group` by `status` and `$sum` of `amount`. Two round-trips max, not N.
+
+### 6.6 `/status <order id>` — one deposit's status
+
+Looks the order up by `orderId` **and** the invoking group's `groupId`, so a group can only see its own orders. An id from another group reads exactly like a missing id: `Order not found in this group.`
+
+```
+Order ID: B20260928093925967924200
+Amount: ₹400.00
+Status: pending
+Created on: 31/10/2026, 16:14
+```
+
+When the order has been credited (`status: 'success'`), one extra line is appended with the settlement timestamp (`paidAt`, falling back to `updatedAt`):
+
+```
+Order ID: B20260928093925967924200
+Amount: ₹400.00
+Status: success
+Created on: 31/10/2026, 16:14
+Success on: 31/10/2026, 16:16
+```
+
+Times are IST (`formatIst`). `failed`, `expired` and `reversed` orders show no `Success on` line. `/status` with no argument replies `Usage: /status <order id>`. It is a group command, so it requires a registered, non-banned group like `/balance` and `/daily`.
 
 ## 7. Authority Model & Owner Alerting
 
@@ -447,6 +471,7 @@ services/bot/upilink.js         parseUpiLink()
 services/bot/handlers/reg.js
 services/bot/handlers/balance.js
 services/bot/handlers/deposit.js
+services/bot/handlers/status.js
 services/bot/handlers/daily.js
 services/bot/stats.js           getGroupStats() aggregation
 
@@ -494,6 +519,7 @@ Vitest, matching the existing pure-unit convention (`tests/*.test.js`, ESM `impo
 - `tests/upilink.test.js` — full UPI URI, missing `am`, missing `pa`, malformed VPA, non-`upi` scheme, empty string
 - `tests/botAmount.test.js` — below min, above max, exact bounds, `NaN`, zero, negative, `"400.50"` string, `"1,000"` rejection
 - `tests/botGuard.test.js` — allowlisted group, owner in DM, owner in non-allowlisted group, private DM from stranger, public group not in allowlist, empty allowlist (open to any group), malformed allowlist env
+- `tests/botStatus.test.js` — `/status` slip for pending/success/failed, `Success on` only for success, `paidAt` → `updatedAt` fallback, missing order
 - `tests/botStats.test.js` — `startOfIstDay` across UTC/IST midnight boundaries, leap/month/year boundaries, all-time bucket
 - `tests/botFormat.test.js` — `Intl.NumberFormat('en-IN')` currency output, stats block rendering
 
@@ -512,7 +538,7 @@ The webhook signature path is still only manually verified — recommend a real 
 4. With an allowlist configured, a group **not** in it runs `/reg` → denied message, and the owner receives a DM containing that group id, the user id, and the command. With no allowlist configured, any group may register.
 5. A stranger DMs `/balance` → denied, owner alerted with their user id.
 6. Registered group runs `/balance` → returns the group's ledger balance.
-7. `/deposit 400` → order row `pending`; reply shows the UPI id, the amount, and a working **Pay with UPI** button pointing at the `upi://` deep link.
+7. `/deposit 400` → order row `pending`; reply shows the UPI id, the amount, and a working **Pay now** button pointing at the gateway deep link (or payment link when no `upi://` link is returned).
 8. `/deposit 50` (below min) and `/deposit 99999999` (above max) → rejected with the configured bound; **no** order row and **no** gateway call.
 9. SimplyPay success webhook for that order → `BotOrder.status = 'success'`, one `BotTransaction` with correct `balanceAfter`, group totals incremented, and a success message posted in the group.
 10. The same webhook replayed → no second `BotTransaction`, no balance change.
@@ -524,6 +550,7 @@ The webhook signature path is still only manually verified — recommend a real 
 16. `POST /api/bot/groups/:groupId/adjust` with a debit exceeding balance → 400, no ledger row, balance unchanged.
 17. Alert de-dupe → 10 `/reg` attempts from the same non-allowlisted group within 5 minutes produce exactly 1 owner DM.
 18. Identity is group-only: after `/reg`, mutating `registeredBy` to a different Telegram user id changes no balance, no order, no stat, and no permission. `grep` the bot source for `userid` and confirm it appears only in comments and in the unrelated admin-JWT path.
+19. `/status <order id>` → reply shows order id, amount, status and created time; a credited order also shows `Success on`; an unknown id, or an id belonging to another group, replies `Order not found in this group.`
 
 ## 16. Open Questions
 

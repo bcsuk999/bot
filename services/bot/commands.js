@@ -5,12 +5,13 @@ const { cmdReg } = require('./handlers/reg');
 const { cmdBalance } = require('./handlers/balance');
 const { cmdDeposit } = require('./handlers/deposit');
 const { cmdDaily } = require('./handlers/daily');
+const { cmdStatus } = require('./handlers/status');
 const { cmdStart } = require('./handlers/start');
 const logger = require('../../utils/logger');
 
 // Commands that need an active member (a registered, non-banned group).
-const GROUP_COMMANDS = new Set(['/balance', '/deposit', '/daily']);
-const ALL_COMMANDS = new Set(['/start', '/reg', '/balance', '/deposit', '/daily']);
+const GROUP_COMMANDS = new Set(['/balance', '/deposit', '/daily', '/status']);
+const ALL_COMMANDS = new Set(['/start', '/reg', '/balance', '/deposit', '/daily', '/status']);
 
 // The "/" menus Telegram renders per chat scope (Bot API setMyCommands).
 // /reg is absent from the group menu on purpose: a normal group member must not
@@ -19,6 +20,7 @@ const GROUP_MENU = [
   { command: 'start', description: 'Show bot info and command list' },
   { command: 'balance', description: 'Show this group balance' },
   { command: 'deposit', description: 'Create a deposit: /deposit <amount>' },
+  { command: 'status', description: 'Check a deposit: /status <order id>' },
   { command: 'daily', description: 'Show this group deposit statistics' },
 ];
 
@@ -144,6 +146,9 @@ async function handleMessage(msg, client, config) {
         break;
       case '/daily':
         result = await cmdDaily(ctx);
+        break;
+      case '/status':
+        result = await cmdStatus(ctx);
         break;
       default:
         return client.sendMessage(chat.id, helpText());

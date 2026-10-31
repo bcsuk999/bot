@@ -24,6 +24,7 @@ const MODULES = [
   'services/bot/handlers/balance',
   'services/bot/handlers/deposit',
   'services/bot/handlers/daily',
+  'services/bot/handlers/status',
   'services/bot/handlers/start',
   'services/botGroupService',
   'services/simplypay',
