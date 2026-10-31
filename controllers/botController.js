@@ -9,6 +9,7 @@ const {
   buildTransactionFilter,
   buildMeta,
   echoFilters,
+  pickUid,
 } = require('../services/bot/query');
 const { getPagination, toNum } = require('../utils/helpers');
 const { health } = require('../services/bot/client');
@@ -42,6 +43,7 @@ function serializeOrder(o) {
 function serializeGroup(g, balance) {
   return {
     groupId: g.groupId,
+    uid: g.uid || null,
     title: g.title,
     username: g.username,
     type: g.type,
@@ -59,10 +61,11 @@ function serializeGroup(g, balance) {
   };
 }
 
-function serializeTransaction(t) {
+function serializeTransaction(t, groupUid = null) {
   return {
     trnId: t.trnId,
     groupId: t.groupId,
+    uid: groupUid,
     orderId: t.orderId,
     amount: toNum(t.amount),
     type: t.type,
@@ -82,7 +85,7 @@ exports.health = async (req, res) => {
 };
 
 // GET /api/bot/groups
-// Filters: ?groupId=&title=&status=active|banned|suspended&from=&to=&page=&limit=
+// Filters: ?groupId=&uid=&title=&status=active|banned|suspended&from=&to=&page=&limit=
 exports.listGroups = async (req, res) => {
   try {
     const { page, limit } = req.query;
@@ -98,17 +101,17 @@ exports.listGroups = async (req, res) => {
       msg: 'Bot groups fetched',
       data: groups,
       meta: buildMeta({ total: result.count, page: result.page, limit: result.limit }),
-      filters: echoFilters(req.query, ['groupId', 'title', 'status', 'from', 'to']),
+      filters: echoFilters(req.query, ['groupId', 'uid', 'title', 'status', 'from', 'to']),
     });
   } catch (err) {
     return fail(res, err, 'Failed to fetch bot groups');
   }
 };
 
-// GET /api/bot/groups/:groupId
+// GET /api/bot/groups/:groupId  (accepts a Telegram group id or a 5-digit uid)
 exports.getGroup = async (req, res) => {
   try {
-    const group = await botGroupService.getGroupByGroupId(req.params.groupId);
+    const group = await botGroupService.resolveGroup(req.params.groupId);
     if (!group) return res.status(404).json({ success: 'failed', msg: 'Group not found' });
 
     const [balance, counts, orders] = await Promise.all([
@@ -145,6 +148,7 @@ async function changeGroupStatus(req, res, status) {
       msg,
       data: {
         groupId: group.groupId,
+        uid: group.uid || null,
         status: group.status,
         remark: group.statusRemark,
         updatedAt: group.statusUpdatedAt,
@@ -156,7 +160,7 @@ async function changeGroupStatus(req, res, status) {
   }
 }
 
-// PATCH /api/bot/groups/:groupId/status  { status, remark }
+// PATCH /api/bot/groups/:groupId/status  { status, remark }  (group id or uid)
 exports.updateGroupStatus = async (req, res) => {
   return changeGroupStatus(req, res, req.body?.status);
 };
@@ -170,10 +174,10 @@ exports.suspendGroup = async (req, res) => changeGroupStatus(req, res, 'suspende
 // POST /api/bot/groups/:groupId/unban    { remark }
 exports.unbanGroup = async (req, res) => changeGroupStatus(req, res, 'active');
 
-// POST /api/bot/groups/:groupId/adjust
+// POST /api/bot/groups/:groupId/adjust  (accepts a group id or a 5-digit uid)
 exports.adjustGroup = async (req, res) => {
   try {
-    const group = await botGroupService.getGroupByGroupId(req.params.groupId);
+    const group = await botGroupService.resolveGroup(req.params.groupId);
     if (!group) return res.status(404).json({ success: 'failed', msg: 'Group not found' });
 
     const { amount, type, remark } = req.body;
@@ -187,6 +191,8 @@ exports.adjustGroup = async (req, res) => {
     return res.status(201).json({
       success: true,
       msg: 'Balance adjusted',
+      groupId: group.groupId,
+      uid: group.uid || null,
       trnId: result.transaction.trnId,
       type,
       amount: toNum(result.transaction.amount),
@@ -231,13 +237,18 @@ exports.getOrder = async (req, res) => {
     const transaction = order.trnId
       ? await BotTransaction.findOne({ trnId: order.trnId }).lean({ getters: true })
       : null;
+    const uids = transaction
+      ? await botGroupService.getGroupUids([transaction.group])
+      : new Map();
 
     return res.json({
       success: true,
       msg: 'Bot order fetched',
       data: {
         order: serializeOrder(order),
-        transaction: transaction ? serializeTransaction(transaction) : null,
+        transaction: transaction
+          ? serializeTransaction(transaction, uids.get(String(transaction.group)) || null)
+          : null,
       },
     });
   } catch (err) {
@@ -246,19 +257,32 @@ exports.getOrder = async (req, res) => {
 };
 
 // GET /api/bot/transactions
-// Filters: ?trnId=&orderId=&groupId=&type=credit|debit&note=&status=&from=&to=&page=&limit=
+// Filters: ?trnId=&orderId=&groupId=&uid=&type=credit|debit&note=&status=&from=&to=&page=&limit=
 exports.listTransactions = async (req, res) => {
   try {
     const { page, limit } = req.query;
     const filter = buildTransactionFilter(req.query);
+
+    // uid belongs to the group, not the ledger row, so resolve it to the
+    // group's ObjectId. This also matches rows written before uid existed.
+    const uid = pickUid(req.query.uid);
+    if (uid) {
+      const group = await botGroupService.getGroupByUid(uid);
+      if (!group) {
+        return res.status(404).json({ success: 'failed', msg: `Group not found for uid: ${uid}` });
+      }
+      filter.group = group._id;
+    }
+
     const result = await botGroupService.listTransactions({ filter, page, limit });
+    const uids = await botGroupService.getGroupUids(result.transactions.map((t) => t.group));
 
     return res.json({
       success: true,
       msg: 'Bot transactions fetched',
-      data: result.transactions.map(serializeTransaction),
+      data: result.transactions.map((t) => serializeTransaction(t, uids.get(String(t.group)) || null)),
       meta: buildMeta({ total: result.count, page: result.page, limit: result.limit }),
-      filters: echoFilters(req.query, ['trnId', 'orderId', 'groupId', 'type', 'note', 'status', 'from', 'to']),
+      filters: echoFilters(req.query, ['trnId', 'orderId', 'groupId', 'uid', 'type', 'note', 'status', 'from', 'to']),
     });
   } catch (err) {
     return fail(res, err, 'Failed to fetch transactions');
@@ -271,10 +295,12 @@ exports.getTransaction = async (req, res) => {
     const transaction = await BotTransaction.findOne({ trnId: req.params.trnId }).lean({ getters: true });
     if (!transaction) return res.status(404).json({ success: 'failed', msg: 'Transaction not found' });
 
+    const uids = await botGroupService.getGroupUids([transaction.group]);
+
     return res.json({
       success: true,
       msg: 'Bot transaction fetched',
-      data: serializeTransaction(transaction),
+      data: serializeTransaction(transaction, uids.get(String(transaction.group)) || null),
     });
   } catch (err) {
     return fail(res, err, 'Failed to fetch transaction');
@@ -342,11 +368,11 @@ exports.rejectOrder = async (req, res) => {
   }
 };
 
-// GET /api/bot/stats/:groupId?window=today|all
+// GET /api/bot/stats/:groupId?window=today|all  (accepts a group id or a 5-digit uid)
 exports.getStats = async (req, res) => {
   try {
     const window = req.query.window === 'today' ? 'today' : 'all';
-    const group = await botGroupService.getGroupByGroupId(req.params.groupId);
+    const group = await botGroupService.resolveGroup(req.params.groupId);
     if (!group) return res.status(404).json({ success: 'failed', msg: 'Group not found' });
 
     const [today, all, balance] = await Promise.all([

@@ -6,6 +6,8 @@
 //   ?groupId=-1001234567890              (partial, case-insensitive)
 //   ?orderId=B2026...                    (partial, case-insensitive for transactions)
 
+const { isValidUid } = require('./uid');
+
 const GROUP_STATUSES = ['active', 'banned', 'suspended'];
 const ORDER_STATUSES = ['pending', 'success', 'failed', 'expired', 'reversed'];
 const TRANSACTION_TYPES = ['credit', 'debit'];
@@ -59,14 +61,26 @@ function pick(value) {
   return s === '' ? undefined : s;
 }
 
+/** uid is an exact 5-digit code, so a malformed one is a client error, not "no match". */
+function pickUid(value) {
+  const uid = pick(value);
+  if (uid === undefined) return undefined;
+  if (!isValidUid(uid)) {
+    throw httpError('uid must be a 5 digit number');
+  }
+  return uid;
+}
+
 function buildGroupFilter(query = {}) {
   const filter = {};
   const groupId = pick(query.groupId);
   const title = pick(query.title);
   const status = pick(query.status);
+  const uid = pickUid(query.uid);
 
   if (groupId) filter.groupId = contains(groupId);
   if (title) filter.title = contains(title);
+  if (uid) filter.uid = uid;
   if (status) {
     if (!GROUP_STATUSES.includes(status)) {
       throw httpError(`status must be one of: ${GROUP_STATUSES.join(', ')}`);
@@ -167,6 +181,7 @@ module.exports = {
   escapeRegex,
   parseDate,
   buildDateRange,
+  pickUid,
   buildGroupFilter,
   buildOrderFilter,
   buildTransactionFilter,

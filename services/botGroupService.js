@@ -3,7 +3,11 @@ const TelegramGroup = require('../models/TelegramGroup');
 const BotOrder = require('../models/BotOrder');
 const BotTransaction = require('../models/BotTransaction');
 const { parseBalance, generateOrderId } = require('../utils/helpers');
+const { randomUid } = require('./bot/uid');
 const logger = require('../utils/logger');
+
+const UID_ALLOCATION_ATTEMPTS = 25;
+const UID_SAVE_ATTEMPTS = 5;
 
 function createApprovalError(msg) {
   const err = new Error(msg);
@@ -11,15 +15,69 @@ function createApprovalError(msg) {
   return err;
 }
 
+function isDuplicateUid(err) {
+  return err?.code === 11000 && /uid/i.test(String(err.message || ''));
+}
+
+/** Pick a 5-digit uid that is not already taken. */
+async function allocateGroupUid() {
+  for (let attempt = 0; attempt < UID_ALLOCATION_ATTEMPTS; attempt++) {
+    const uid = randomUid();
+    if (!(await TelegramGroup.exists({ uid }))) return uid;
+  }
+  const err = new Error('Unable to allocate a unique group uid');
+  err.status = 503;
+  throw err;
+}
+
+/**
+ * Give an existing group a uid. Atomic so two concurrent requests cannot write
+ * different codes; retries on the rare unique-index collision.
+ */
+async function assignGroupUid(group) {
+  if (!group || group.uid) return group?.uid ?? null;
+
+  for (let attempt = 0; attempt < UID_SAVE_ATTEMPTS; attempt++) {
+    const uid = await allocateGroupUid();
+    try {
+      const updated = await TelegramGroup.findOneAndUpdate(
+        { _id: group._id, $or: [{ uid: { $exists: false } }, { uid: null }, { uid: '' }] },
+        { $set: { uid } },
+        { new: true }
+      );
+      if (updated) {
+        group.uid = updated.uid;
+        return updated.uid;
+      }
+      // Another request beat us to it - use whatever is stored now.
+      const fresh = await TelegramGroup.findById(group._id);
+      if (fresh?.uid) {
+        group.uid = fresh.uid;
+        return fresh.uid;
+      }
+    } catch (err) {
+      if (!isDuplicateUid(err)) throw err;
+    }
+  }
+
+  const err = new Error('Unable to allocate a unique group uid');
+  err.status = 503;
+  throw err;
+}
+
 /**
  * Create (or refresh) the member record for a group.
  * Membership is keyed on groupId alone - there is no userid and no User doc.
- * `registeredBy` is audit-only.
+ * `registeredBy` is audit-only. Every member gets a public 5-digit `uid`.
  */
 async function registerGroup({ groupId, title, username, type, registeredBy, registeredByUsername }) {
   const existing = await TelegramGroup.findOne({ groupId: String(groupId) });
 
   if (existing) {
+    // Backfill old rows first, including blocked groups, so support can find
+    // any group by uid.
+    if (!existing.uid) await assignGroupUid(existing);
+
     if (existing.status !== 'active') {
       return {
         group: existing,
@@ -36,7 +94,7 @@ async function registerGroup({ groupId, title, username, type, registeredBy, reg
     return { group: existing, alreadyRegistered: true, blocked: false };
   }
 
-  const group = await TelegramGroup.create({
+  const base = {
     groupId: String(groupId),
     title: title || '',
     username: username || null,
@@ -44,14 +102,68 @@ async function registerGroup({ groupId, title, username, type, registeredBy, reg
     status: 'active',
     registeredBy: registeredBy ?? null,
     registeredByUsername: registeredByUsername || '',
-  });
-  logger.info({ groupId: String(groupId) }, 'bot: group registered as member');
+  };
+
+  let group = null;
+  for (let attempt = 0; attempt < UID_SAVE_ATTEMPTS; attempt++) {
+    try {
+      group = await TelegramGroup.create({ ...base, uid: await allocateGroupUid() });
+      break;
+    } catch (err) {
+      if (!isDuplicateUid(err) || attempt === UID_SAVE_ATTEMPTS - 1) throw err;
+    }
+  }
+
+  logger.info({ groupId: String(groupId), uid: group.uid }, 'bot: group registered as member');
   return { group, alreadyRegistered: false, blocked: false };
 }
 
 async function getGroupByGroupId(groupId) {
   if (groupId == null) return null;
   return TelegramGroup.findOne({ groupId: String(groupId) });
+}
+
+async function getGroupByUid(uid) {
+  if (uid == null) return null;
+  const value = String(uid).trim();
+  if (!/^\d{5}$/.test(value)) return null;
+  return TelegramGroup.findOne({ uid: value });
+}
+
+/** Resolve a path parameter that may be either a Telegram group id or a uid. */
+async function resolveGroup(value) {
+  if (value == null) return null;
+  const key = String(value).trim();
+  if (!key) return null;
+  return (await getGroupByGroupId(key)) || (await getGroupByUid(key));
+}
+
+/** uid lookup for a page of ledger rows, so responses can show it. */
+async function getGroupUids(groupObjectIds = []) {
+  const ids = [...new Set((groupObjectIds || []).filter(Boolean).map(String))];
+  if (!ids.length) return new Map();
+  const rows = await TelegramGroup.find({ _id: { $in: ids } })
+    .select('_id uid')
+    .lean();
+  return new Map(rows.map((row) => [String(row._id), row.uid || null]));
+}
+
+/** One-off startup pass: give every pre-existing group a uid. */
+async function backfillGroupUids() {
+  const missing = await TelegramGroup.find({
+    $or: [{ uid: { $exists: false } }, { uid: null }, { uid: '' }],
+  }).select('_id uid');
+
+  let updated = 0;
+  for (const group of missing) {
+    try {
+      if (await assignGroupUid(group)) updated += 1;
+    } catch (err) {
+      logger.error({ groupId: group._id, err }, 'bot: failed to assign group uid');
+    }
+  }
+  if (updated) logger.info({ updated }, 'bot: backfilled group uids');
+  return { updated };
 }
 
 /** Active member or null. Used by every group-scoped command. */
@@ -241,12 +353,13 @@ async function setGroupStatus(groupId, status, { remark, changedBy } = {}) {
     throw createApprovalError('remark is required for a status change');
   }
 
-  const group = await getGroupByGroupId(groupId);
+  const group = await resolveGroup(groupId);
   if (!group) {
     const err = new Error('Group not found');
     err.status = 404;
     throw err;
   }
+  if (!group.uid) await assignGroupUid(group);
 
   const changedAt = new Date();
   group.status = status;
@@ -268,6 +381,10 @@ async function setGroupStatus(groupId, status, { remark, changedBy } = {}) {
 module.exports = {
   registerGroup,
   getGroupByGroupId,
+  getGroupByUid,
+  resolveGroup,
+  getGroupUids,
+  backfillGroupUids,
   getActiveGroup,
   getGroupBalance,
   getGroupLedger,

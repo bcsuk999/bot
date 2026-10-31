@@ -10,6 +10,14 @@ const telegramGroupSchema = new mongoose.Schema(
       unique: true,
       index: true,
     },
+    // Public 5-digit member code, generated at registration (e.g. "32045").
+    // Sparse so groups created before this field existed can be backfilled.
+    uid: {
+      type: String,
+      unique: true,
+      sparse: true,
+      match: /^\d{5}$/,
+    },
     title: {
       type: String,
       default: '',

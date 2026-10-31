@@ -11,6 +11,7 @@ const simplypayController = require('./controllers/simplypayController');
 const botWebhookController = require('./controllers/botWebhookController');
 const connectDB = require('./db/conn');
 const { startBot, stopBot, processWebhookUpdate } = require('./services/bot/client');
+const botGroupService = require('./services/botGroupService');
 const logger = require('./utils/logger');
 
 const app = express();
@@ -88,7 +89,13 @@ app.listen(PORT, () => {
 // Bot starts only after the DB is connected. A bot failure must not take the
 // HTTP server down, so startBot never throws.
 connectDB()
-  .then(() => startBot())
+  .then(async () => {
+    // Give every pre-existing group a 5-digit uid before serving requests.
+    await botGroupService
+      .backfillGroupUids()
+      .catch((err) => logger.error({ err }, 'bot: group uid backfill failed'));
+    return startBot();
+  })
   .catch((err) => logger.error({ err }, 'Bot start skipped (DB not ready)'));
 
 process.on('SIGTERM', () => {

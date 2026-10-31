@@ -84,6 +84,7 @@ Three new models. **None** touch `User`, `Payin`, or `Transaction` — the bot i
 ```js
 {
   groupId:              { type: String, required, unique, index },   // "-1001234567890"
+  uid:                  { type: String, unique, sparse, match: /^\d{5}$/ }, // public code: "32045"
   title:                { type: String, default: '' },
   username:             { type: String, default: null },            // public @handle
   type:                 { type: String, enum: ['group','supergroup','private'], default: 'supergroup' },
@@ -101,7 +102,9 @@ Three new models. **None** touch `User`, `Payin`, or `Transaction` — the bot i
 }
 ```
 
-Indexes: unique `{ groupId: 1 }`, `{ status: 1 }`, `{ createdAt: -1 }`, `timestamps: true`.
+Indexes: unique `{ groupId: 1 }`, unique sparse `{ uid: 1 }`, `{ status: 1 }`, `{ createdAt: -1 }`, `timestamps: true`.
+
+`uid` is the public 5-digit member code, generated at registration from the range `10000–99999` and retried on the (rare) collision. It is a support/panel handle only: money, authorization and every aggregate stay keyed on `groupId`. It is sparse so groups created before the field existed can be backfilled; `backfillGroupUids()` runs after DB connect and assigns one to every group that lacks it.
 
 ### 5.2 `models/BotOrder.js` — a deposit order
 
@@ -184,7 +187,7 @@ So in any group, typing `/` lists only the member commands; a normal user is nev
 | Already registered & active | Idempotent — return the same payload as first registration, with `alreadyRegistered: true` |
 | Banned | Reply `This group is banned. Please contact support for further help.` + **owner alert** |
 | Suspended | Reply `This group is suspended. Please contact support for further help.` + **owner alert** |
-| Valid | Upsert `TelegramGroup` on `groupId` with `status: 'active'`, `title`, `username`; set `registeredBy` / `registeredByUsername` for audit |
+| Valid | Upsert `TelegramGroup` on `groupId` with `status: 'active'`, a generated 5-digit `uid`, `title`, `username`; set `registeredBy` / `registeredByUsername` for audit |
 
 The `groupId` in the message is the sole key — `upsert` matches on `groupId` alone. A second `/reg` from the same group updates the title/username and nothing else; it never creates a second member.
 
@@ -194,6 +197,7 @@ The `groupId` in the message is the sole key — `upsert` matches on `groupId` a
 Group registered
 
 Group ID: -1001234567890
+UID: 32045
 Title: SubnPay Deposits
 Balance: ₹0.00
 Registered at: 2026-09-28 10:15 IST
@@ -205,9 +209,9 @@ Commands:
 /daily   - This group deposit statistics
 ```
 
-`Registered By` is audit information about who typed the command. The member itself is the `Group ID` line — that is the identifier every later command, query and balance lookup uses.
+`Registered By` is audit information about who typed the command. The member itself is the `Group ID` line — that is the identifier every later command, query and balance lookup uses. `UID` is the short public code support and the admin panel can quote or search by; a second `/reg` returns the same code.
 
-Returns HTTP-equivalent payload `groupId`, `title`, `username`, `balance`, `registeredAt`, `status`, `alreadyRegistered`.
+Returns HTTP-equivalent payload `groupId`, `uid`, `title`, `username`, `balance`, `registeredAt`, `status`, `alreadyRegistered`.
 
 ### 6.3 `/balance` — group balance
 
@@ -458,18 +462,20 @@ List endpoints use one standard shape, so a panel can share pagination and filte
   "msg": "Bot groups fetched",
   "data": [],
   "meta": { "total": 0, "page": 1, "limit": 20, "totalPages": 0, "hasNextPage": false, "hasPrevPage": false },
-  "filters": { "groupId": "-100", "status": "active", "from": "2026-10-01", "to": "2026-10-31" }
+  "filters": { "uid": "32045", "status": "active", "from": "2026-10-01", "to": "2026-10-31" }
 }
 ```
 
 - `data` is an array for lists, an object for single resources.
 - `meta` is always present on lists (`total`, `page`, `limit`, `totalPages`, `hasNextPage`, `hasPrevPage`).
 - `filters` echoes only the filters actually applied.
+- `uid` is an **exact 5-digit** match; a value that is not 5 digits returns `400` rather than an empty list. It works on groups and transactions (for transactions it is resolved to the group first).
 - `groupId`, `title`, `orderId`, `trnId` are **partial, case-insensitive** matches. `from`/`to` are inclusive; a date-only `to=2026-10-31` covers the whole day. Invalid dates or unknown enum values return `400`.
+- Any `:groupId` path segment accepts either the Telegram group id (`-1001234567890`) or the 5-digit `uid` (`32045`).
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/bot/groups` | List groups — `?groupId&title&status=active\|banned\|suspended&from&to&page&limit` |
+| `GET` | `/api/bot/groups` | List groups — `?groupId&uid&title&status=active\|banned\|suspended&from&to&page&limit` |
 | `GET` | `/api/bot/groups/:groupId` | Group detail + balance + last 10 orders + `statusHistory` |
 | `PATCH` | `/api/bot/groups/:groupId/status` | `{ status: 'active' \| 'banned' \| 'suspended', remark }` — **remark required** |
 | `POST` | `/api/bot/groups/:groupId/ban` | `{ remark }` → `status: 'banned'` |
@@ -480,7 +486,7 @@ List endpoints use one standard shape, so a panel can share pagination and filte
 | `GET` | `/api/bot/orders/:orderId` | Order detail + its BotTransaction if credited |
 | `POST` | `/api/bot/orders/:orderId/approve` | Manually credit a stuck `pending` order (same atomic claim + credit path as the webhook) |
 | `POST` | `/api/bot/orders/:orderId/reject` | Mark `pending` → `failed` |
-| `GET` | `/api/bot/transactions` | List ledger rows — `?trnId&orderId&groupId&type&note&status&from&to&page&limit` |
+| `GET` | `/api/bot/transactions` | List ledger rows — `?trnId&orderId&groupId&uid&type&note&status&from&to&page&limit`. An unknown `uid` returns `404 Group not found for uid: <uid>`. |
 | `GET` | `/api/bot/transactions/:trnId` | One ledger row |
 | `GET` | `/api/bot/stats/:groupId` | `?window=today\|all` → same shape as `/daily` |
 | `GET` | `/api/bot/health` | Bot connected?, transport mode, registered group count (no auth — mirrors existing `/` health check) |
@@ -500,6 +506,7 @@ services/bot/config.js          env parsing + allowlist Set + validation
 services/bot/client.js          node-telegram-bot-api instance, start/stop
 services/bot/guard.js           resolveAuthority() + alertOwner()
 services/bot/query.js           admin list filters, date range, pagination meta
+services/bot/uid.js             5-digit group uid validation + generation
 services/bot/commands.js        message dispatcher
 services/bot/upilink.js         parseUpiLink()
 services/bot/handlers/reg.js
@@ -510,7 +517,8 @@ services/bot/handlers/daily.js
 services/bot/stats.js           getGroupStats() aggregation
 
 services/botGroupService.js     getGroupBalance, creditGroup, adjustGroup, registerGroup,
-                               listGroups, listTransactions, setGroupStatus
+                               listGroups, listTransactions, setGroupStatus,
+                               resolveGroup, backfillGroupUids
                                (mirrors services/payinService.js placement)
 
 controllers/botController.js         REST API
@@ -557,6 +565,7 @@ Vitest, matching the existing pure-unit convention (`tests/*.test.js`, ESM `impo
 - `tests/botAmount.test.js` — below min, above max, exact bounds, `NaN`, zero, negative, `"400.50"` string, `"1,000"` rejection
 - `tests/botGuard.test.js` — allowlisted group, owner in DM, owner in non-allowlisted group, private DM from stranger, public group not in allowlist, empty allowlist (open to any group), malformed allowlist env, and the exact banned/suspended denial messages
 - `tests/botQuery.test.js` — group/order/transaction filters, regex escaping, enum validation, inclusive date range (`to` date-only covers the whole day), reversed-range rejection, pagination `meta`, filter echo
+- `tests/botUid.test.js` — 5-digit uid validation, generation bounds, exact group filter, malformed uid → `400`, and `uid` staying out of the transaction Mongo filter (resolved in the controller)
 - `tests/botMenu.test.js` — `/` command menu scopes and group help omitting `/reg`
 - `tests/botStatus.test.js` — `/status` slip for pending/success/failed, `Success on` only for success, `paidAt` → `updatedAt` fallback, missing order
 - `tests/botStats.test.js` — `startOfIstDay` across UTC/IST midnight boundaries, leap/month/year boundaries, all-time bucket
@@ -593,6 +602,8 @@ The webhook signature path is still only manually verified — recommend a real 
 20. `GET /api/bot/groups?groupId=-100&from=2026-10-01&to=2026-10-31` → only matching groups, `meta` with `total/page/limit/totalPages/hasNextPage/hasPrevPage`, and `filters` echoing the applied subset. An invalid date or unknown `status` → 400.
 21. `POST /api/bot/groups/:groupId/ban` (or `/suspend`, `/unban`) without `remark` → 400 and no change; with a remark → `status` updated, `statusRemark`/`statusUpdatedAt`/`statusUpdatedBy` set, a `statusHistory` entry appended, and the group's very next bot message is the support-contact denial.
 22. `GET /api/bot/transactions?orderId=…&groupId=…&from=…&to=…` → only matching ledger rows, same `{ success, msg, data, meta, filters }` envelope as `/groups`; `/transactions/:trnId` returns one row or 404.
+23. A group runs `/reg` → the reply includes a `UID:` line with a 5-digit code; the same code is returned by `GET /api/bot/groups` and on a second `/reg`.
+24. `GET /api/bot/groups?uid=32045` returns exactly that group; `GET /api/bot/groups/32045` and `GET /api/bot/stats/32045` work without the Telegram id; `GET /api/bot/transactions?uid=32045` returns that group's ledger rows (including rows written before uid existed); a uid of `3204` returns `400`; an unknown 5-digit uid on transactions returns `404`.
 
 ## 16. Open Questions
 

@@ -18,6 +18,7 @@ const MODULES = [
   'services/bot/stats',
   'services/bot/guard',
   'services/bot/query',
+  'services/bot/uid',
   'services/bot/client',
   'services/bot/commands',
   'services/bot/handlers/help',

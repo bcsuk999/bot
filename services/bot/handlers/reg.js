@@ -33,6 +33,7 @@ async function cmdReg(ctx) {
     alreadyRegistered ? 'Group already registered' : 'Group registered',
     '',
     `Group ID: ${member.groupId}`,
+    `UID: ${member.uid || '-'}`,
     `Title: ${member.title || '-'}`,
     `Balance: ${formatInr(balance)}`,
     `Registered at: ${formatIst(member.createdAt)}`,
