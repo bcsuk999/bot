@@ -365,7 +365,7 @@ The offending chat id and user id are both reported. Sent once per unauthorized 
 
 ### 7.3 Command routing
 
-`node-telegram-bot-api` `on('message')`. Parse the command token and args, dispatch to a handler map. Unknown commands reply with a help block. Non-command messages are ignored in groups (avoids noise); the owner gets a help hint in their DM.
+`node-telegram-bot-api` `on('message')`. Parse the command token and args, dispatch to a handler map. For each command, send `Request processing...` first, then edit that message with the command result. If Telegram cannot send or edit the processing message, log the failure and send the final result as a new message. Unknown commands reply with a help block. Non-command messages are ignored in groups (avoids noise); the owner gets a help hint in their DM.
 
 ## 8. UPI Deep Link Handling
 
@@ -568,6 +568,7 @@ Vitest, matching the existing pure-unit convention (`tests/*.test.js`, ESM `impo
 - `tests/botAmount.test.js` — below min, above max, exact bounds, `NaN`, zero, negative, `"400.50"` string, `"1,000"` rejection
 - `tests/botGuard.test.js` — group chats proceed regardless of the legacy allowlist, owner in DM/group, private DM from stranger, malformed legacy allowlist env, and the exact banned/suspended denial messages
 - `tests/botCommands.test.js` — registration required for group commands; active groups are allowed and banned, suspended, or invalid statuses are denied
+- `tests/botReply.test.js` — command processing message is edited with the final reply; sending/editing failures fall back to a normal reply
 - `tests/botQuery.test.js` — group/order/transaction filters, regex escaping, enum validation, inclusive date range (`to` date-only covers the whole day), reversed-range rejection, pagination `meta`, filter echo, keyset cursor round-trip/malformed input/AND-composition
 - `tests/botUid.test.js` — 5-digit uid validation, generation bounds, exact group filter, malformed uid → `400`, and `uid` staying out of the transaction Mongo filter (resolved in the controller)
 - `tests/botMenu.test.js` — `/` command menu scopes and group help omitting `/reg`

@@ -7,6 +7,7 @@ const { cmdDeposit } = require('./handlers/deposit');
 const { cmdDaily } = require('./handlers/daily');
 const { cmdStatus } = require('./handlers/status');
 const { cmdStart } = require('./handlers/start');
+const { sendProcessingMessage, sendProcessingReply } = require('./reply');
 const logger = require('../../utils/logger');
 
 // Commands that need a registered group with active status.
@@ -94,57 +95,58 @@ async function handleMessage(msg, client, config) {
 
   const command = parsed?.command || '';
   const ctx = { chat, from, args: parsed?.args || [], command, client, config };
+  const processingMessage = parsed ? await sendProcessingMessage(client, chat.id) : null;
+  const reply = (text, options) =>
+    sendProcessingReply(client, chat.id, processingMessage, text, options);
 
   // 1. Restrict private chats and alert the owner when needed.
   const decision = await enforce(ctx, config, client);
   if (!decision.allowed) {
     const text = decision.reason === 'dm_not_allowed' ? DENY.DM_NOT_ALLOWED : DENY.NOT_AUTHORISED;
-    return client.sendMessage(chat.id, text);
+    return reply(text);
   }
 
   const isOwnerDm = chat.type === 'private' && decision.reason === 'owner';
 
   // 2. Unknown command -> help. Non-command DMs from the owner -> help hint.
   if (!parsed || parsed.unknown) {
-    return client.sendMessage(chat.id, helpText({ isOwner: isOwnerDm }));
+    return reply(helpText({ isOwner: isOwnerDm }));
   }
 
   // 3. Private chats are owner-only (guard above). A wallet belongs to a group,
   // so group commands cannot run here; /reg in DM only points at the group.
   if (chat.type === 'private') {
     if (command === '/start') {
-      return client.sendMessage(
-        chat.id,
+      return reply(
         ['This bot works inside groups.', '', helpText({ isOwner: true })].join('\n')
       );
     }
     if (command === '/reg') {
-      return client.sendMessage(
-        chat.id,
+      return reply(
         'Run /reg inside the group you want to register. A wallet belongs to the group, not to a person.'
       );
     }
-    return client.sendMessage(chat.id, 'Group commands must be run inside an authorised group.');
+    return reply('Group commands must be run inside an authorised group.');
   }
 
   if (command === '/reg') {
     const registrationDenial = getRegistrationDenial(from, config);
-    if (registrationDenial) return client.sendMessage(chat.id, registrationDenial);
+    if (registrationDenial) return reply(registrationDenial);
   }
 
-  // 4. The group is the member; groupId is the only identity. Every group
-  // command is scoped to this record, regardless of which member sent it.
-  let group = await botGroupService.getGroupByGroupId(chat.id);
-  const isRegistered = !!group;
-  const groupAccessDenial = getGroupAccessDenial(command, group);
-  if (groupAccessDenial) return client.sendMessage(chat.id, groupAccessDenial);
-
-  ctx.group = group;
-  ctx.isRegistered = isRegistered;
-
-  // 5. Dispatch.
   let result;
   try {
+    // 4. The group is the member; groupId is the only identity. Every group
+    // command is scoped to this record, regardless of which member sent it.
+    const group = await botGroupService.getGroupByGroupId(chat.id);
+    const isRegistered = !!group;
+    const groupAccessDenial = getGroupAccessDenial(command, group);
+    if (groupAccessDenial) return reply(groupAccessDenial);
+
+    ctx.group = group;
+    ctx.isRegistered = isRegistered;
+
+    // 5. Dispatch.
     switch (command) {
       case '/start':
         result = await cmdStart(ctx);
@@ -165,11 +167,11 @@ async function handleMessage(msg, client, config) {
         result = await cmdStatus(ctx);
         break;
       default:
-        return client.sendMessage(chat.id, helpText());
+        return reply(helpText());
     }
   } catch (err) {
     logger.error({ err, command, chatId: chat.id, userId: from.id }, 'bot: command failed');
-    return client.sendMessage(chat.id, 'Something went wrong. Please try again.');
+    return reply('Something went wrong. Please try again.');
   }
 
   if (result?.shouldAlert) {
@@ -177,7 +179,7 @@ async function handleMessage(msg, client, config) {
     await alertOwner(ctx, result.reason || 'blocked', config, client);
   }
 
-  return client.sendMessage(chat.id, result.text, result.options || {});
+  return reply(result.text, result.options || {});
 }
 
 function register(client, config) {
