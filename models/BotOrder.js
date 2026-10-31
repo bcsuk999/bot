@@ -97,6 +97,7 @@ const botOrderSchema = new mongoose.Schema(
 
 botOrderSchema.index({ group: 1, status: 1 });
 botOrderSchema.index({ group: 1, createdAt: -1 });
+botOrderSchema.index({ groupId: 1, createdAt: -1 });
 botOrderSchema.index({ status: 1, createdAt: -1 });
 
 module.exports = mongoose.model('BotOrder', botOrderSchema);

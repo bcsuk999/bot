@@ -10,6 +10,7 @@ const {
   buildMeta,
   echoFilters,
   pickUid,
+  applyGroupScope,
 } = require('../services/bot/query');
 const { getPagination, toNum } = require('../utils/helpers');
 const { health } = require('../services/bot/client');
@@ -92,9 +93,9 @@ exports.listGroups = async (req, res) => {
     const filter = buildGroupFilter(req.query);
     const result = await botGroupService.listGroups({ filter, page, limit });
 
-    const groups = await Promise.all(
-      result.groups.map(async (g) => serializeGroup(g, await botGroupService.getGroupBalance(g._id)))
-    );
+    // One aggregation for the whole page instead of one query per group.
+    const balances = await botGroupService.getGroupBalances(result.groups.map((g) => g._id));
+    const groups = result.groups.map((g) => serializeGroup(g, balances.get(String(g._id)) ?? 0));
 
     return res.json({
       success: true,
@@ -203,12 +204,40 @@ exports.adjustGroup = async (req, res) => {
   }
 };
 
+/**
+ * Resolve `?groupId` / `?uid` to a real group and scope a list query to it.
+ *
+ * Ledger and order rows store both the group ObjectId (`group`) and the
+ * Telegram id as a string (`groupId`). Older rows can be missing one of the
+ * two, so matching on either keeps every row for the group in the same list.
+ *
+ * A 5-digit `groupId` is accepted as a uid: the `/reg` reply shows `UID: 32045`
+ * and support tends to paste that into the group-id box. Without this the
+ * regex ran against the Telegram id and returned nothing.
+ */
+async function scopeByGroup(filter, query = {}) {
+  const groupIdParam = query.groupId == null ? '' : String(query.groupId).trim();
+  const uid = pickUid(query.uid);
+  if (!groupIdParam && !uid) return { group: null };
+
+  const group = await botGroupService.findGroupForFilter({ groupId: groupIdParam, uid });
+  if (!group) return { group: null, notFoundUid: uid || null };
+
+  applyGroupScope(filter, group);
+  return { group };
+}
+
 // GET /api/bot/orders
-// Filters: ?orderId=&groupId=&status=&from=&to=&page=&limit=
+// Filters: ?orderId=&groupId=&uid=&status=&from=&to=&page=&limit=
 exports.listOrders = async (req, res) => {
   try {
     const { page, limit } = req.query;
     const filter = buildOrderFilter(req.query);
+
+    const { notFoundUid } = await scopeByGroup(filter, req.query);
+    if (notFoundUid) {
+      return res.status(404).json({ success: 'failed', msg: `Group not found for uid: ${notFoundUid}` });
+    }
 
     const { pageNum, limitNum, skip } = getPagination(page, limit);
     const [rows, count] = await Promise.all([
@@ -221,7 +250,7 @@ exports.listOrders = async (req, res) => {
       msg: 'Bot orders fetched',
       data: rows.map(serializeOrder),
       meta: buildMeta({ total: count, page: pageNum, limit: limitNum }),
-      filters: echoFilters(req.query, ['orderId', 'groupId', 'status', 'from', 'to']),
+      filters: echoFilters(req.query, ['orderId', 'groupId', 'uid', 'status', 'from', 'to']),
     });
   } catch (err) {
     return fail(res, err, 'Failed to fetch orders');
@@ -263,15 +292,11 @@ exports.listTransactions = async (req, res) => {
     const { page, limit } = req.query;
     const filter = buildTransactionFilter(req.query);
 
-    // uid belongs to the group, not the ledger row, so resolve it to the
-    // group's ObjectId. This also matches rows written before uid existed.
-    const uid = pickUid(req.query.uid);
-    if (uid) {
-      const group = await botGroupService.getGroupByUid(uid);
-      if (!group) {
-        return res.status(404).json({ success: 'failed', msg: `Group not found for uid: ${uid}` });
-      }
-      filter.group = group._id;
+    // uid belongs to the group, not the ledger row, so resolve it first. This
+    // also covers a 5-digit uid pasted into ?groupId=.
+    const { notFoundUid } = await scopeByGroup(filter, req.query);
+    if (notFoundUid) {
+      return res.status(404).json({ success: 'failed', msg: `Group not found for uid: ${notFoundUid}` });
     }
 
     const result = await botGroupService.listTransactions({ filter, page, limit });

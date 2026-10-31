@@ -131,7 +131,7 @@ Indexes: unique `{ groupId: 1 }`, unique sparse `{ uid: 1 }`, `{ status: 1 }`, `
 }
 ```
 
-Indexes: unique `{ orderId: 1 }`, `{ group: 1, status: 1 }`, `{ group: 1, createdAt: -1 }`, `{ status: 1, createdAt: -1 }`, `timestamps: true`.
+Indexes: unique `{ orderId: 1 }`, `{ group: 1, status: 1 }`, `{ group: 1, createdAt: -1 }`, `{ groupId: 1, createdAt: -1 }`, `{ status: 1, createdAt: -1 }`, `timestamps: true`.
 
 ### 5.3 `models/BotTransaction.js` — the balance ledger
 
@@ -154,7 +154,7 @@ Mirrors the existing `Transaction` pattern. **Group balance = `balanceAfter` of 
 }
 ```
 
-Indexes: unique `{ trnId: 1 }`, `{ group: 1, status: 1 }`, `{ group: 1, createdAt: -1 }`, `timestamps: true`.
+Indexes: unique `{ trnId: 1 }`, `{ group: 1, status: 1 }`, `{ group: 1, createdAt: -1 }`, `{ groupId: 1, createdAt: -1 }`, `{ status: 1, createdAt: -1 }`, `timestamps: true`.
 
 ## 6. Command Specification
 
@@ -469,7 +469,8 @@ List endpoints use one standard shape, so a panel can share pagination and filte
 - `data` is an array for lists, an object for single resources.
 - `meta` is always present on lists (`total`, `page`, `limit`, `totalPages`, `hasNextPage`, `hasPrevPage`).
 - `filters` echoes only the filters actually applied.
-- `uid` is an **exact 5-digit** match; a value that is not 5 digits returns `400` rather than an empty list. It works on groups and transactions (for transactions it is resolved to the group first).
+- `uid` is an **exact 5-digit** match; a value that is not 5 digits returns `400` rather than an empty list. It works on groups, orders and transactions (for orders/transactions it is resolved to the group first).
+- A 5-digit `groupId` is treated as a uid fallback, because the `/reg` reply shows the uid next to the id. A full Telegram id resolves to the group too; any other value stays a partial match. When a group resolves, the query is scoped to `$or: [{ group: _id }, { groupId: '<telegram id>' }]` so rows written before the `group` reference still appear.
 - `groupId`, `title`, `orderId`, `trnId` are **partial, case-insensitive** matches. `from`/`to` are inclusive; a date-only `to=2026-10-31` covers the whole day. Invalid dates or unknown enum values return `400`.
 - Any `:groupId` path segment accepts either the Telegram group id (`-1001234567890`) or the 5-digit `uid` (`32045`).
 
@@ -482,11 +483,11 @@ List endpoints use one standard shape, so a panel can share pagination and filte
 | `POST` | `/api/bot/groups/:groupId/suspend` | `{ remark }` → `status: 'suspended'` |
 | `POST` | `/api/bot/groups/:groupId/unban` | `{ remark }` → `status: 'active'` |
 | `POST` | `/api/bot/groups/:groupId/adjust` | `{ amount, type: 'credit'\|'debit', remark }` → creates a `note: 'adjustment'` BotTransaction. Guards against negative resulting balance. |
-| `GET` | `/api/bot/orders` | List orders — `?orderId&groupId&status&from&to&page&limit` |
+| `GET` | `/api/bot/orders` | List orders — `?orderId&groupId&uid&status&from&to&page&limit` |
 | `GET` | `/api/bot/orders/:orderId` | Order detail + its BotTransaction if credited |
 | `POST` | `/api/bot/orders/:orderId/approve` | Manually credit a stuck `pending` order (same atomic claim + credit path as the webhook) |
 | `POST` | `/api/bot/orders/:orderId/reject` | Mark `pending` → `failed` |
-| `GET` | `/api/bot/transactions` | List ledger rows — `?trnId&orderId&groupId&uid&type&note&status&from&to&page&limit`. An unknown `uid` returns `404 Group not found for uid: <uid>`. |
+| `GET` | `/api/bot/transactions` | List ledger rows — `?trnId&orderId&groupId&uid&type&note&status&from&to&page&limit`. An unknown `uid` returns `404 Group not found for uid: <uid>`. A 5-digit `groupId` is accepted as a uid. |
 | `GET` | `/api/bot/transactions/:trnId` | One ledger row |
 | `GET` | `/api/bot/stats/:groupId` | `?window=today\|all` → same shape as `/daily` |
 | `GET` | `/api/bot/health` | Bot connected?, transport mode, registered group count (no auth — mirrors existing `/` health check) |
@@ -494,6 +495,14 @@ List endpoints use one standard shape, so a panel can share pagination and filte
 Every status change (ban, suspend, unban) **requires a non-empty `remark`**; the API returns `400` without one. The change updates `status`, `statusRemark`, `statusUpdatedAt`, `statusUpdatedBy` and appends to `statusHistory`.
 
 All admin routes: `auth, requireAdmin`. Errors follow the existing pattern: `throw new Error(msg); err.status = 400;` in services, mapped in controllers.
+
+### 10.1 Query behaviour and cost
+
+- A page of groups is decorated with **one** aggregation for balances (latest `success` row per group), never one query per group.
+- Every list issues `find` and `countDocuments` in parallel on the same filter, and both use `lean({ getters: true })`.
+- A resolved group filter is `$or: [{ group: _id }, { groupId: '<telegram id>' }]` (two indexed equality arms) rather than an unanchored case-insensitive regex, which Mongo cannot serve from an index.
+- Free-text filters (`groupId` partial, `title`, `orderId`, `trnId`) are intentionally regex and therefore collection scans bounded by the other indexed predicates. The uid path is exact because it is indexed and unique.
+- Compound indexes follow ESR (equality → sort → range), e.g. `{ status: 1, createdAt: -1 }`, `{ groupId: 1, createdAt: -1 }`.
 
 ## 11. Architecture
 
@@ -516,9 +525,9 @@ services/bot/handlers/status.js
 services/bot/handlers/daily.js
 services/bot/stats.js           getGroupStats() aggregation
 
-services/botGroupService.js     getGroupBalance, creditGroup, adjustGroup, registerGroup,
-                               listGroups, listTransactions, setGroupStatus,
-                               resolveGroup, backfillGroupUids
+services/botGroupService.js     getGroupBalance, getGroupBalances, creditGroup, adjustGroup,
+                               registerGroup, listGroups, listTransactions, setGroupStatus,
+                               resolveGroup, findGroupForFilter, backfillGroupUids
                                (mirrors services/payinService.js placement)
 
 controllers/botController.js         REST API
@@ -604,6 +613,8 @@ The webhook signature path is still only manually verified — recommend a real 
 22. `GET /api/bot/transactions?orderId=…&groupId=…&from=…&to=…` → only matching ledger rows, same `{ success, msg, data, meta, filters }` envelope as `/groups`; `/transactions/:trnId` returns one row or 404.
 23. A group runs `/reg` → the reply includes a `UID:` line with a 5-digit code; the same code is returned by `GET /api/bot/groups` and on a second `/reg`.
 24. `GET /api/bot/groups?uid=32045` returns exactly that group; `GET /api/bot/groups/32045` and `GET /api/bot/stats/32045` work without the Telegram id; `GET /api/bot/transactions?uid=32045` returns that group's ledger rows (including rows written before uid existed); a uid of `3204` returns `400`; an unknown 5-digit uid on transactions returns `404`.
+25. `GET /api/bot/transactions?groupId=32045` (a uid pasted into the group-id box) returns the same rows as `?uid=32045`; `?groupId=-1001234567890` returns every row of that group, including rows that only carry the stored `groupId` string; `GET /api/bot/orders?groupId=32045` behaves the same.
+26. A page of 20 groups uses one balance aggregation, not 20 separate balance queries.
 
 ## 16. Open Questions
 

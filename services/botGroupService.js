@@ -138,6 +138,42 @@ async function resolveGroup(value) {
   return (await getGroupByGroupId(key)) || (await getGroupByUid(key));
 }
 
+/**
+ * Resolve a list filter (`?groupId=` / `?uid=`) to one group.
+ * A 5-digit value under `groupId` is accepted as a uid: the /reg reply shows
+ * `UID: 32045`, and support tends to paste that into the group-id box.
+ */
+async function findGroupForFilter({ groupId, uid } = {}) {
+  if (uid) return getGroupByUid(uid);
+  if (groupId == null) return null;
+  const key = String(groupId).trim();
+  if (!key) return null;
+
+  const byGroupId = await getGroupByGroupId(key);
+  if (byGroupId) return byGroupId;
+  if (/^\d{5}$/.test(key)) return getGroupByUid(key);
+  return null;
+}
+
+/** Balances for a page of groups in ONE query (avoids N+1 in group lists). */
+async function getGroupBalances(groupObjectIds = []) {
+  const ids = [...new Set((groupObjectIds || []).filter(Boolean).map(String))];
+  if (!ids.length) return new Map();
+
+  const rows = await BotTransaction.aggregate([
+    {
+      $match: {
+        group: { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) },
+        status: 'success',
+      },
+    },
+    { $sort: { createdAt: -1, _id: -1 } },
+    { $group: { _id: '$group', balanceAfter: { $first: '$balanceAfter' } } },
+  ]);
+
+  return new Map(rows.map((row) => [String(row._id), parseBalance(row.balanceAfter)]));
+}
+
 /** uid lookup for a page of ledger rows, so responses can show it. */
 async function getGroupUids(groupObjectIds = []) {
   const ids = [...new Set((groupObjectIds || []).filter(Boolean).map(String))];
@@ -383,7 +419,9 @@ module.exports = {
   getGroupByGroupId,
   getGroupByUid,
   resolveGroup,
+  findGroupForFilter,
   getGroupUids,
+  getGroupBalances,
   backfillGroupUids,
   getActiveGroup,
   getGroupBalance,

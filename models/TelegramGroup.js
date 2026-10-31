@@ -96,5 +96,8 @@ const telegramGroupSchema = new mongoose.Schema(
 
 // status is already indexed via `index: true` on the field above.
 telegramGroupSchema.index({ createdAt: -1 });
+// Admin list default: newest groups, optionally filtered by status (ESR:
+// equality on status, then the createdAt sort).
+telegramGroupSchema.index({ status: 1, createdAt: -1 });
 
 module.exports = mongoose.model('TelegramGroup', telegramGroupSchema);

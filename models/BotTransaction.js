@@ -77,5 +77,9 @@ const botTransactionSchema = new mongoose.Schema(
 
 botTransactionSchema.index({ group: 1, status: 1 });
 botTransactionSchema.index({ group: 1, createdAt: -1 });
+// Admin list: filter by the denormalised group id, sort by newest first.
+botTransactionSchema.index({ groupId: 1, createdAt: -1 });
+// Admin list: moderation/audit views filtered by status across all groups.
+botTransactionSchema.index({ status: 1, createdAt: -1 });
 
 module.exports = mongoose.model('BotTransaction', botTransactionSchema);

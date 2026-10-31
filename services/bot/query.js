@@ -172,6 +172,18 @@ function buildMeta({ total, page, limit }) {
   };
 }
 
+/**
+ * Replace a textual `groupId` filter with an exact group scope. Matching on the
+ * ObjectId or the stored Telegram id keeps rows written before either field
+ * existed while staying indexable (no unanchored regex).
+ */
+function applyGroupScope(filter, group) {
+  if (!group) return filter;
+  delete filter.groupId;
+  filter.$or = [{ group: group._id }, { groupId: group.groupId }];
+  return filter;
+}
+
 module.exports = {
   GROUP_STATUSES,
   ORDER_STATUSES,
@@ -187,4 +199,5 @@ module.exports = {
   buildTransactionFilter,
   echoFilters,
   buildMeta,
+  applyGroupScope,
 };
