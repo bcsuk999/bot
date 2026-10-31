@@ -42,7 +42,7 @@ function parseAllowlist(raw) {
     logger.warn({ invalid }, 'bot config: ignoring malformed TELEGRAM_ALLOWED_GROUP_IDS entries');
   }
   if (ids.size === 0 && usernames.size === 0) {
-    logger.warn('bot config: TELEGRAM_ALLOWED_GROUP_IDS is empty - no group can be authorised');
+    logger.warn('bot config: TELEGRAM_ALLOWED_GROUP_IDS is empty - any group can use the bot');
   }
 
   return { ids, usernames, invalid };
@@ -119,9 +119,8 @@ function validateConfig(config) {
   if (!config.enabled) return problems;
   if (!config.token) problems.push('TELEGRAM_BOT_TOKEN is missing');
   if (!config.ownerId || !Number.isFinite(config.ownerId)) problems.push('TELEGRAM_OWNER_ID is missing or not a number');
-  if (config.allowedGroupIds.size === 0 && config.allowedGroupUsernames.size === 0) {
-    problems.push('TELEGRAM_ALLOWED_GROUP_IDS is empty - no group can be authorised');
-  }
+  // TELEGRAM_ALLOWED_GROUP_IDS is optional: when it is empty the bot is open to
+  // any group, so an empty allowlist is not a startup error.
   if (config.maxDepositLowerThanMin) problems.push('BOT_MAX_DEPOSIT_AMOUNT is below BOT_MIN_DEPOSIT_AMOUNT');
   if (!config.botNotifyUrl) {
     problems.push('SIMPLYPAY_BOT_NOTIFY_URL is missing - group deposits could never be settled');

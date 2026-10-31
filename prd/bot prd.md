@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-A Telegram bot that treats each Telegram **group as a wallet/member**. A group is allowlisted via env, registers itself with `/reg`, receives deposits via `/deposit` using the existing SimplyPay INR deep link, and can query its balance and deposit statistics.
+A Telegram bot that treats each Telegram **group as a wallet/member**. A group (optionally restricted by an env allowlist) registers itself with `/reg`, receives deposits via `/deposit` using the existing SimplyPay INR deep link, and can query its balance and deposit statistics.
 
 ### 1.1 The identity rule
 
@@ -11,7 +11,7 @@ A Telegram bot that treats each Telegram **group as a wallet/member**. A group i
 - Membership, wallets, balances, orders, and stats are all keyed on `groupId`. There is no numeric `userid`, no `User` document, and no per-human wallet anywhere in the bot path.
 - The `TelegramGroup` document *is* the member record. Creating it is "member creation."
 - `registeredBy` and `requestedBy` on `TelegramGroup` / `BotOrder` are **audit-only** — they record which human happened to type the command. They are never used to look up a wallet, authorize a balance, join a query, or scope an aggregate. Changing them changes nothing about the money.
-- Consequence: a human who is in three allowlisted groups holds three independent wallets. Balances do not follow a person between groups. This is intended.
+- Consequence: a human who is in three groups holds three independent wallets. Balances do not follow a person between groups. This is intended.
 - `TELEGRAM_OWNER_ID` is the single exception, and it is a *permission* not an *account* — it gates who may operate the bot and who receives alerts. It owns no wallet.
 
 **Explicitly out of scope of the existing auth system:** the bot has no relation to `User`, `mobile`, `password`, `userid`, or JWT. No login, no OTP, no linking to web users.
@@ -22,11 +22,11 @@ A Telegram bot that treats each Telegram **group as a wallet/member**. A group i
 
 | # | Goal |
 |---|---|
-| G1 | Allowlisted groups self-register via `/reg` and immediately receive a group id + balance |
+| G1 | Groups self-register via `/reg` and immediately receive a group id + balance |
 | G2 | Any member of a registered group can read that group's balance via `/balance` |
 | G3 | Any member can create a deposit via `/deposit <amount>` and get a UPI id + amount back from the SimplyPay deep link |
 | G4 | Per-group daily stats (`/daily`): that group's total orders, total amount, success, pending, failed — today (IST) as the headline, all-time as context |
-| G5 | Any command attempt from a non-allowlisted chat or user is denied and the owner is DM'd the offending chat id, user id, and command |
+| G5 | Any command attempt from a chat outside a configured allowlist (or any private DM from a stranger) is denied and the owner is DM'd the offending chat id, user id, and command |
 | G6 | A REST API to inspect groups, orders, stats, and manually adjust balances |
 
 ## 3. Non-Goals
@@ -48,8 +48,9 @@ TELEGRAM_BOT_TOKEN=<paste-token-from-@BotFather>   # never commit a real token
 TELEGRAM_OWNER_ID=<owner-numeric-telegram-user-id>
 TELEGRAM_BOT_USERNAME=subnpay_bot          # optional, for deep links
 
-# Authority allowlist — comma-separated group ids permitted to /reg
-TELEGRAM_ALLOWED_GROUP_IDS=-1001234567890,-1009876543210
+# Authority allowlist — optional, comma-separated group ids permitted to /reg.
+# Leave empty to let any group use the bot (private DMs are still refused).
+TELEGRAM_ALLOWED_GROUP_IDS=
 
 # Deposit limits (INR)
 BOT_MIN_DEPOSIT_AMOUNT=100
@@ -162,8 +163,8 @@ So in any group, typing `/` lists only the member commands; a normal user is nev
 
 ### 6.1 `/start` — onboarding
 
-- Allowlisted, unregistered → `This group is allowlisted. Run /reg to activate its wallet.`
-- Not allowlisted → denied + owner alert
+- Unregistered → `This group is authorised. Run /reg to create its wallet.`
+- Outside the allowlist (only when one is configured) → denied + owner alert
 - Registered → group id, balance, and the command list
 
 ### 6.2 `/reg` — create the member (the group)
@@ -172,7 +173,7 @@ So in any group, typing `/` lists only the member commands; a normal user is nev
 
 | Case | Behaviour |
 |---|---|
-| Chat id **not** in `TELEGRAM_ALLOWED_GROUP_IDS` | Reply `This group is not authorised to use the bot.` + **owner alert** |
+| Chat id **not** in `TELEGRAM_ALLOWED_GROUP_IDS` (allowlist configured) | Reply `This chat is not authorised to use this bot.` + **owner alert** |
 | Already registered & active | Idempotent — return the same payload as first registration, with `alreadyRegistered: true` |
 | Banned | Reply `This group is blocked.` + **owner alert** |
 | Valid | Upsert `TelegramGroup` on `groupId` with `status: 'active'`, `title`, `username`; set `registeredBy` / `registeredByUsername` for audit |
@@ -296,7 +297,7 @@ Implementation: one Mongo `$facet` aggregation over `BotOrder` filtered by `{ gr
 
 ### 7.1 Allowlist parsing
 
-`TELEGRAM_ALLOWED_GROUP_IDS` is comma-separated, trimmed, empty entries dropped. Parsed once at boot into a `Set<string>`. Support `-100…` and `@username` (resolved to an id via `getChat` on first use, then cached). Invalid entries log a warning at boot and are dropped.
+`TELEGRAM_ALLOWED_GROUP_IDS` is optional. It is comma-separated, trimmed, empty entries dropped. Parsed once at boot into a `Set<string>`. Support `-100…` and `@username` (resolved to an id via `getChat` on first use, then cached). Invalid entries log a warning at boot and are dropped. When the list is empty the bot is open: every group is allowed and only private DMs are refused. An empty allowlist is **not** a startup error.
 
 ### 7.2 Guard decision order
 
@@ -304,8 +305,9 @@ Implementation: one Mongo `$facet` aggregation over `BotOrder` filtered by `{ gr
 
 1. `from.id === TELEGRAM_OWNER_ID` → **allow** (`reason: 'owner'`). Owner bypasses the allowlist in DMs and groups.
 2. `chat.type === 'private'` → **deny** (`reason: 'dm_not_allowed'`, alert).
-3. `allowlist.has(String(chat.id))` → **allow** (`reason: 'allowlisted_chat'`). Works for allowlisted groups before they run `/reg` — the allowlist is the authority; `/reg` is what creates the wallet.
-4. Otherwise → **deny** (`reason: 'chat_not_allowlisted'`, alert).
+3. Allowlist empty (no ids and no usernames) → **allow** (`reason: 'open_allowlist'`). Every group may use the bot.
+4. `allowlist.has(String(chat.id))` → **allow** (`reason: 'allowlisted_chat'`). Works for allowlisted groups before they run `/reg` — the allowlist is the authority; `/reg` is what creates the wallet.
+5. Otherwise → **deny** (`reason: 'chat_not_allowlisted'`, alert).
 
 Group-level commands (`/balance`, `/deposit`, `/daily`) additionally require a `TelegramGroup` row with `status: 'active'`; otherwise reply `This group is not registered. Run /reg first.` (no owner alert — that is a normal, expected state).
 
@@ -491,7 +493,7 @@ Vitest, matching the existing pure-unit convention (`tests/*.test.js`, ESM `impo
 
 - `tests/upilink.test.js` — full UPI URI, missing `am`, missing `pa`, malformed VPA, non-`upi` scheme, empty string
 - `tests/botAmount.test.js` — below min, above max, exact bounds, `NaN`, zero, negative, `"400.50"` string, `"1,000"` rejection
-- `tests/botGuard.test.js` — allowlisted group, owner in DM, owner in non-allowlisted group, private DM from stranger, public group not in allowlist, empty/malformed allowlist env
+- `tests/botGuard.test.js` — allowlisted group, owner in DM, owner in non-allowlisted group, private DM from stranger, public group not in allowlist, empty allowlist (open to any group), malformed allowlist env
 - `tests/botStats.test.js` — `startOfIstDay` across UTC/IST midnight boundaries, leap/month/year boundaries, all-time bucket
 - `tests/botFormat.test.js` — `Intl.NumberFormat('en-IN')` currency output, stats block rendering
 
@@ -505,9 +507,9 @@ The webhook signature path is still only manually verified — recommend a real 
 ## 15. Acceptance Criteria
 
 1. Boot with `BOT_ENABLED=true` and a valid token → `bot connected` logged; `/api/bot/health` reports connected.
-2. Allowlisted group runs `/reg` → reply contains the group id, title, `₹0.00` balance, and the command list; a `TelegramGroup` row exists with `status: 'active'`.
+2. A group runs `/reg` → reply contains the group id, title, `₹0.00` balance, and the command list; a `TelegramGroup` row exists with `status: 'active'`.
 3. `/reg` again on the same group → same payload plus `alreadyRegistered: true`; no duplicate row.
-4. A **non**-allowlisted group runs `/reg` → denied message, and the owner receives a DM containing that group id, the user id, and the command.
+4. With an allowlist configured, a group **not** in it runs `/reg` → denied message, and the owner receives a DM containing that group id, the user id, and the command. With no allowlist configured, any group may register.
 5. A stranger DMs `/balance` → denied, owner alerted with their user id.
 6. Registered group runs `/balance` → returns the group's ledger balance.
 7. `/deposit 400` → order row `pending`; reply shows the UPI id, the amount, and a working **Pay with UPI** button pointing at the `upi://` deep link.
@@ -531,7 +533,7 @@ Resolved during drafting (recorded for traceability):
 - ~~**`/daily` scope**~~ → **That group's daily stats**, today (IST) as the headline plus all-time for context, visible to every member of the registered group.
 - ~~**Commission on group deposits**~~ → **None.** `creditCommission` is never called from the bot path; groups have no upline.
 - ~~**Deposit expiry**~~ → **Gateway-driven only.** An order expires exclusively when SimplyPay reports it expired. No cron, no TTL, no `expiresAt`. Stale `pending` orders persist and remain visible in the `/daily` pending count. `expired` added to the `BotOrder` status enum.
-- ~~**Multi-group isolation**~~ → **Per group, by design.** The `groupId` is the member identifier (§1.1). A human in three allowlisted groups holds three independent wallets; balances never follow a person between groups. `registeredBy` / `requestedBy` are audit-only and are never used for wallet lookup or authorization.
+- ~~**Multi-group isolation**~~ → **Per group, by design.** The `groupId` is the member identifier (§1.1). A human in three groups holds three independent wallets; balances never follow a person between groups. `registeredBy` / `requestedBy` are audit-only and are never used for wallet lookup or authorization.
 
 Still open:
 

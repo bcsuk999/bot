@@ -104,9 +104,9 @@ describe('loadConfig / validateConfig', () => {
     expect(problems).toContain('TELEGRAM_OWNER_ID is missing or not a number');
   });
 
-  it('flags an empty allowlist when enabled', () => {
-    const c = loadConfig({ BOT_ENABLED: 'true', TELEGRAM_BOT_TOKEN: 't', TELEGRAM_OWNER_ID: '1' });
-    expect(validateConfig(c)).toContain('TELEGRAM_ALLOWED_GROUP_IDS is empty - no group can be authorised');
+  it('does not require an allowlist when enabled', () => {
+    const c = makeConfig({ TELEGRAM_ALLOWED_GROUP_IDS: '' });
+    expect(validateConfig(c)).toEqual([]);
   });
 
   it('passes validation for a well-formed config', () => {
@@ -214,10 +214,16 @@ describe('resolveAuthority', () => {
     expect(r.alert).toBe(true);
   });
 
-  it('denies when the allowlist is empty', () => {
+  it('allows any group when the allowlist is empty', () => {
     const empty = makeConfig({ TELEGRAM_ALLOWED_GROUP_IDS: '' });
     const r = resolveAuthority({ from: { id: 1 }, chat: { id: -1001, type: 'supergroup' } }, empty);
-    expect(r.allowed).toBe(false);
+    expect(r).toEqual({ allowed: true, reason: 'open_allowlist', alert: false });
+  });
+
+  it('still denies a private DM when the allowlist is empty', () => {
+    const empty = makeConfig({ TELEGRAM_ALLOWED_GROUP_IDS: '' });
+    const r = resolveAuthority({ from: { id: 555 }, chat: { id: 555, type: 'private' } }, empty);
+    expect(r).toEqual({ allowed: false, reason: 'dm_not_allowed', alert: true });
   });
 
   it('denies a plain (non-super) group that is not allowlisted', () => {

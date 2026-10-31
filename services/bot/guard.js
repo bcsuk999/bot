@@ -34,7 +34,9 @@ function resetAlertCache() {
  * Decide whether a chat may run bot commands.
  *
  * Order: owner bypass -> private chat deny -> allowlist -> deny.
- * The allowlist is the authority; /reg is what creates the wallet.
+ * The allowlist is the authority; /reg is what creates the wallet. It is
+ * optional: when no ids/usernames are configured every group is allowed and
+ * only private DMs are refused.
  *
  * @param {object} ctx  { from, chat, command }
  * @param {object} config
@@ -51,6 +53,15 @@ function resolveAuthority(ctx = {}, config = {}) {
   const isPrivate = chat.type === 'private';
   if (isPrivate) {
     return { allowed: false, reason: 'dm_not_allowed', alert: true };
+  }
+
+  const allowlistEmpty =
+    (!(config.allowedGroupIds instanceof Set) || config.allowedGroupIds.size === 0) &&
+    (!(config.allowedGroupUsernames instanceof Set) || config.allowedGroupUsernames.size === 0);
+
+  // No allowlist configured: the bot is open to every group.
+  if (allowlistEmpty) {
+    return { allowed: true, reason: 'open_allowlist', alert: false };
   }
 
   if (chat.id != null && config.allowedGroupIds instanceof Set && config.allowedGroupIds.has(String(chat.id))) {
