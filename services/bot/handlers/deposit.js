@@ -2,7 +2,7 @@ const BotOrder = require('../../../models/BotOrder');
 const simplypay = require('../../simplypay');
 const { generateOrderId } = require('../../../utils/helpers');
 const { parseUpiLink, canBeButtonUrl } = require('../upilink');
-const { formatInr, label, escapeHtml } = require('../format');
+const { formatInr, formatAmount, escapeHtml } = require('../format');
 const { alertOwner } = require('../guard');
 const logger = require('../../../utils/logger');
 
@@ -114,49 +114,49 @@ async function cmdDeposit(ctx) {
   if (!deepLink) order.remark = 'No upi deep link; gateway web link only';
   await order.save();
 
-  // Build the reply. UPI ID + amount come from the deep link (the requirement).
-  // Telegram only accepts http(s)/tg:// in inline-button URLs, so the button is
-  // built from the gateway's https paymentLink; the raw upi:// is shown as text.
-  const lines = [
-    '💳 Deposit Requested',
-    '',
-    `${label('Order ID')}   : ${orderId}`,
-    `${label('Group ID')}   : ${group.groupId}`,
-    `${label('Amount')}     : ${formatInr(amount)}`,
-  ];
+  const reply = buildDepositReply({ orderId, amount, upiId: parsedLink.valid ? parsedLink.upiId : null });
 
-  if (parsedLink.valid) {
-    lines.push(`${label('UPI ID')}     : ${escapeHtml(parsedLink.upiId)}`);
-    lines.push(`${label('UPI Amount')} : ${formatInr(parsedLink.upiAmount ?? amount)}`);
-  } else {
-    lines.push(`${label('UPI ID')}     : unavailable`);
-    lines.push('');
-    lines.push('UPI ID could not be parsed — use the payment link below.');
-  }
-
-  if (parsedLink.txnRef) lines.push(`${label('Gateway Ref')} : ${escapeHtml(parsedLink.txnRef)}`);
-  else if (order.simplypayOrderNo) lines.push(`${label('Gateway Ref')} : ${escapeHtml(order.simplypayOrderNo)}`);
-
-  lines.push(`${label('Status')}     : pending`);
-
-  if (deepLink) {
-    // The deep link is gateway-controlled and this message is HTML-parsed.
-    lines.push('');
-    lines.push(`<code>${escapeHtml(deepLink)}</code>`);
-  }
-
-  const replyOptions = { parse_mode: 'HTML' };
-
-  // Prefer an https button (deep link only if it happens to be http, else paymentLink)
+  // The gateway payment link is the only way a payment gets tied back to this
+  // order, so it stays as an action button even though the message body carries
+  // just the three payment details.
   const buttonUrl = canBeButtonUrl(deepLink) ? deepLink : canBeButtonUrl(paymentLink) ? paymentLink : null;
   if (buttonUrl) {
-    replyOptions.reply_markup = {
-      inline_keyboard: [[{ text: '📲 Pay now', url: buttonUrl }]],
-    };
+    reply.options.reply_markup.inline_keyboard.push([{ text: 'Pay now', url: buttonUrl }]);
   }
 
   logger.info({ groupId: group.groupId, orderId, amount, upiId: order.upiId }, 'bot: /deposit created');
-  return { text: lines.join('\n'), options: replyOptions };
+  return reply;
 }
 
-module.exports = { cmdDeposit, parseDepositAmount };
+/**
+ * The /deposit reply: order id, amount to pay and UPI id, nothing else.
+ * No emoji, no status line - it should read like a payment slip, not a bot.
+ * Every value has an explicit copy button (Telegram copy_text), and the order
+ * id / UPI id are rendered as <code> so tapping the text copies it too.
+ *
+ * @returns {{ text: string, options: object }}
+ */
+function buildDepositReply({ orderId, amount, upiId }) {
+  const text = [
+    `Order ID: <code>${escapeHtml(orderId)}</code>`,
+    `Amount to pay: ${formatInr(amount)}`,
+    `UPI ID: ${upiId ? `<code>${escapeHtml(upiId)}</code>` : 'unavailable'}`,
+  ].join('\n');
+
+  const keyboard = [
+    [{ text: 'Copy order ID', copy_text: { text: String(orderId) } }],
+    [{ text: 'Copy amount', copy_text: { text: formatAmount(amount) } }],
+  ];
+  if (upiId) keyboard.push([{ text: 'Copy UPI ID', copy_text: { text: String(upiId) } }]);
+
+  return {
+    text,
+    options: {
+      parse_mode: 'HTML',
+      reply_markup: { inline_keyboard: keyboard },
+    },
+  };
+}
+
+module.exports = { cmdDeposit, parseDepositAmount, buildDepositReply };
+

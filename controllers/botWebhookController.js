@@ -4,7 +4,7 @@ const botGroupService = require('../services/botGroupService');
 const BotOrder = require('../models/BotOrder');
 const TelegramGroup = require('../models/TelegramGroup');
 const { getClient, getConfig } = require('../services/bot/client');
-const { formatInr, formatIst, label } = require('../services/bot/format');
+const { formatInr } = require('../services/bot/format');
 const logger = require('../utils/logger');
 
 // SimplyPay status codes. The gateway is the only thing that can expire an order.
@@ -35,30 +35,39 @@ async function notifyGroup(groupId, text) {
   }
 }
 
+// Group notifications: plain text, no emoji, no "Credited" line (credited always
+// equals the order face value). Same payment-slip style as the /deposit reply.
+function buildSuccessNotice({ orderId, amount, balance }) {
+  return [
+    'Deposit successful',
+    '',
+    `Order ID: ${orderId}`,
+    `Amount: ${formatInr(amount)}`,
+    `Balance: ${formatInr(balance)}`,
+  ].join('\n');
+}
+
+function buildFailedNotice({ orderId, amount, reason }) {
+  return [
+    'Deposit failed',
+    '',
+    `Order ID: ${orderId}`,
+    `Amount: ${formatInr(amount)}`,
+    `Reason: ${reason}`,
+  ].join('\n');
+}
+
 async function notifySuccess(order, credited, balance) {
   await notifyGroup(
     order.groupId,
-    [
-      '✅ Deposit Successful',
-      '',
-      `${label('Order ID')} : ${order.orderId}`,
-      `${label('Amount')}   : ${formatInr(order.amount)}`,
-      `${label('Credited')} : ${formatInr(credited)}`,
-      `${label('Balance')}  : ${formatInr(balance)}`,
-    ].join('\n')
+    buildSuccessNotice({ orderId: order.orderId, amount: credited, balance })
   );
 }
 
 async function notifyFailed(order, reason) {
   await notifyGroup(
     order.groupId,
-    [
-      '❌ Deposit Failed',
-      '',
-      `${label('Order ID')} : ${order.orderId}`,
-      `${label('Amount')}   : ${formatInr(order.amount)}`,
-      `${label('Reason')}   : ${reason}`,
-    ].join('\n')
+    buildFailedNotice({ orderId: order.orderId, amount: order.amount, reason })
   );
 }
 
@@ -185,6 +194,8 @@ module.exports = {
   handlePayinCallback,
   claimOrder,
   settleSuccess,
+  buildSuccessNotice,
+  buildFailedNotice,
   SUCCESS_STATUSES,
   FAILED_STATUSES,
   EXPIRED_STATUSES,

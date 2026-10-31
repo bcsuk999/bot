@@ -218,25 +218,24 @@ Argument parsing: `/deposit 400`, `/deposit 400.50`. Currency symbols, commas, a
 6. `simplypay.createPaymentOrder({ merOrderNo: orderId, amount, notifyUrl: process.env.SIMPLYPAY_BOT_NOTIFY_URL, attach: 'botdeposit_<orderId>', extra: { name: 'Group Deposit', email: 'bot@subnpay', mobile: '9999999999' } })`
 7. `code !== 0` → set order `status: 'failed'`, `remark: msg`, reply `Payment gateway error: <msg>`, and DM the owner.
 8. Parse `data.params.deepLink` → `{ upiId, upiAmount, txnRef, note }` (§8). Persist `upiId`, `deepLink`, `paymentLink`, `simplypayOrderNo`.
-9. Reply with inline keyboard:
+9. Reply with inline keyboard. The message body carries exactly three details — no header, no emoji, no status line:
 
 ```
-💳 Deposit Requested
+Order ID: B20260928093925967924200
+Amount to pay: ₹400.00
+UPI ID: merchant@paytm
 
-Order ID    : B20260928093925967924200
-Group ID    : -1001234567890
-Amount      : ₹400.00
-UPI ID      : merchant@paytm
-UPI Amount  : ₹400.00
-Gateway Ref : 20250928093926
-Status      : pending
-
-[ 📲 Pay with UPI ]   ← inline button, url = deepLink
+[ Copy order ID ]
+[ Copy amount ]
+[ Copy UPI ID ]
+[ Pay now ]     ← inline url button, only when the gateway returns an http(s) link
 ```
 
-`Credited` is omitted from the reply because it always equals `Amount` — no bonus is involved.
+The order id and UPI id are wrapped in `<code>`, so tapping the value copies it as well (`copy_text` buttons, Bot API 7.11+). "Copy amount" copies the plain number (`400.00`), without the `₹`.
 
-If `upiId` cannot be parsed, still return the deep link + amount and note `UPI ID unavailable — use the payment link`, plus `data.params.paymentLink` as a second button.
+`Pay now` is kept even though the body shows only three details: it is the only link that ties the payment back to `orderId`, and paying the bare UPI id does not produce a matching gateway callback.
+
+If `upiId` cannot be parsed, the line reads `UPI ID: unavailable`, its copy button is omitted, and the keyboard falls back to `data.params.paymentLink` for the `Pay now` button.
 
 ### 6.5 `/daily` — that group's daily deposit statistics
 
@@ -387,13 +386,14 @@ await TelegramGroup.updateOne({ _id: group._id }, {
 **Group notification** (new behaviour, required for the flow to be usable — flagging explicitly):
 
 ```
-✅ Deposit Successful
+Deposit successful
 
-Order ID  : B20260928093925967924200
-Amount    : ₹400.00
-Credited  : ₹400.00
-Balance   : ₹12,900.00
+Order ID: B20260928093925967924200
+Amount: ₹400.00
+Balance: ₹12,900.00
 ```
+
+Same plain style for failures: `Deposit failed`, then `Order ID`, `Amount`, `Reason` — no emoji, no header icons. `Credited` is dropped because it always equals `Amount`.
 
 Sent with `bot.sendMessage(group.groupId, ...)`. Failures are logged, never thrown — the webhook must still return `200`.
 
