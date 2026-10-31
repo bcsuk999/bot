@@ -20,6 +20,11 @@ describe('owner command menu', () => {
   it('advertises /reg', () => {
     expect(OWNER_MENU.map((c) => c.command)).toContain('reg');
   });
+
+  it('advertises /info only in the owner menu', () => {
+    expect(OWNER_MENU.map((c) => c.command)).toContain('info');
+    expect(GROUP_MENU.map((c) => c.command)).not.toContain('info');
+  });
 });
 
 describe('setupCommandMenus', () => {
@@ -62,5 +67,10 @@ describe('helpText', () => {
 
   it('shows /reg in the owner private chat', () => {
     expect(helpText({ isOwner: true })).toContain('/reg');
+  });
+
+  it('shows /info only in owner help', () => {
+    expect(helpText({ isOwner: true })).toContain('/info <message>');
+    expect(helpText()).not.toContain('/info');
   });
 });

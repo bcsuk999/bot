@@ -210,6 +210,11 @@ async function getActiveGroup(groupId) {
   return group;
 }
 
+async function getActiveGroupIds() {
+  const groups = await TelegramGroup.find({ status: 'active' }).select('groupId').lean();
+  return groups.map((group) => group.groupId);
+}
+
 /**
  * Group balance = balanceAfter of the most recent success ledger row, else 0.
  * Mirrors helpers.getCurrentBalance but keyed on the group instead of a user.
@@ -455,6 +460,7 @@ module.exports = {
   getGroupBalances,
   backfillGroupUids,
   getActiveGroup,
+  getActiveGroupIds,
   getGroupBalance,
   getGroupLedger,
   creditGroup,

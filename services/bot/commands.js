@@ -7,12 +7,13 @@ const { cmdDeposit } = require('./handlers/deposit');
 const { cmdDaily } = require('./handlers/daily');
 const { cmdStatus } = require('./handlers/status');
 const { cmdStart } = require('./handlers/start');
+const { cmdInfo } = require('./handlers/info');
 const { sendProcessingMessage, sendProcessingReply } = require('./reply');
 const logger = require('../../utils/logger');
 
 // Commands that need a registered group with active status.
 const GROUP_COMMANDS = new Set(['/balance', '/deposit', '/daily', '/status']);
-const ALL_COMMANDS = new Set(['/start', '/reg', '/balance', '/deposit', '/daily', '/status']);
+const ALL_COMMANDS = new Set(['/start', '/reg', '/balance', '/deposit', '/daily', '/status', '/info']);
 const REG_OWNER_ONLY = 'Only the bot owner can register a group. Ask the owner to run /reg here.';
 
 // The "/" menus Telegram renders per chat scope (Bot API setMyCommands).
@@ -41,6 +42,7 @@ function getRegistrationDenial(from, config) {
 const OWNER_MENU = [
   { command: 'start', description: 'Show bot info and command list' },
   { command: 'reg', description: 'Register a group (run it inside the group)' },
+  { command: 'info', description: 'Send a message to all active groups' },
 ];
 
 /**
@@ -94,7 +96,7 @@ async function handleMessage(msg, client, config) {
   if (!parsed && chat.type !== 'private') return;
 
   const command = parsed?.command || '';
-  const ctx = { chat, from, args: parsed?.args || [], command, client, config };
+  const ctx = { chat, from, args: parsed?.args || [], command, client, config, messageText: msg.text };
   const processingMessage = parsed ? await sendProcessingMessage(client, chat.id) : null;
   const reply = (text, options) =>
     sendProcessingReply(client, chat.id, processingMessage, text, options);
@@ -126,7 +128,20 @@ async function handleMessage(msg, client, config) {
         'Run /reg inside the group you want to register. A wallet belongs to the group, not to a person.'
       );
     }
+    if (command === '/info') {
+      try {
+        const result = await cmdInfo(ctx);
+        return reply(result.text);
+      } catch (err) {
+        logger.error({ err, userId: from.id }, 'bot: info broadcast failed');
+        return reply('Unable to send the info broadcast. Please try again.');
+      }
+    }
     return reply('Group commands must be run inside an authorised group.');
+  }
+
+  if (command === '/info') {
+    return reply('Run /info in the bot private chat to notify active registered groups.');
   }
 
   if (command === '/reg') {

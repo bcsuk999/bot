@@ -166,9 +166,9 @@ All handlers live in `services/bot/handlers/`. Every command runs through the gu
 | Scope | Commands shown |
 |---|---|
 | `all_group_chats` | `/start`, `/balance`, `/deposit`, `/status`, `/daily` — **`/reg` is not listed** |
-| `chat` = `TELEGRAM_OWNER_ID` | `/start`, `/reg` |
+| `chat` = `TELEGRAM_OWNER_ID` | `/start`, `/reg`, `/info` |
 
-So in any group, typing `/` lists only the member commands; a normal user is never shown that registration exists. `/reg` appears only in the owner's private chat, where it replies `Run /reg inside the group you want to register.` The owner must then run `/reg` in the target group; other members cannot register groups. The group help block likewise omits `/reg`; only the owner's DM help includes it. `setMyCommands` is best-effort: a failure (e.g. the owner has never started the bot, so the chat does not exist yet) is logged and never blocks startup, and re-publishing runs on the next restart.
+So in any group, typing `/` lists only the member commands; a normal user is never shown owner commands. `/reg` appears only in the owner's private chat, where it replies `Run /reg inside the group you want to register.` The owner must then run `/reg` in the target group; other members cannot register groups. `/info <message>` is also owner-DM-only and broadcasts the supplied text to every active registered group, reporting successful and failed deliveries. The group help block omits owner commands; only the owner's DM help includes them. `setMyCommands` is best-effort: a failure (e.g. the owner has never started the bot, so the chat does not exist yet) is logged and never blocks startup, and re-publishing runs on the next restart.
 
 ### 6.1 `/start` — onboarding
 
@@ -572,6 +572,7 @@ Vitest, matching the existing pure-unit convention (`tests/*.test.js`, ESM `impo
 - `tests/botQuery.test.js` — group/order/transaction filters, regex escaping, enum validation, inclusive date range (`to` date-only covers the whole day), reversed-range rejection, pagination `meta`, filter echo, keyset cursor round-trip/malformed input/AND-composition
 - `tests/botUid.test.js` — 5-digit uid validation, generation bounds, exact group filter, malformed uid → `400`, and `uid` staying out of the transaction Mongo filter (resolved in the controller)
 - `tests/botMenu.test.js` — `/` command menu scopes and group help omitting `/reg`
+- `tests/botInfo.test.js` — owner info message parsing, active-group broadcast results, per-group delivery failures, and empty/overlong message validation
 - `tests/botStatus.test.js` — `/status` slip for pending/success/failed, `Success on` only for success, `paidAt` → `updatedAt` fallback, missing order
 - `tests/botStats.test.js` — `startOfIstDay` across UTC/IST midnight boundaries, leap/month/year boundaries, all-time bucket
 - `tests/botFormat.test.js` — `Intl.NumberFormat('en-IN')` currency output, stats block rendering
