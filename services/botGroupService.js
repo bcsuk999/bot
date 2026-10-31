@@ -4,6 +4,7 @@ const BotOrder = require('../models/BotOrder');
 const BotTransaction = require('../models/BotTransaction');
 const { parseBalance, generateOrderId } = require('../utils/helpers');
 const { randomUid } = require('./bot/uid');
+const { applyCursor, encodeCursor } = require('./bot/query');
 const logger = require('../utils/logger');
 
 const UID_ALLOCATION_ATTEMPTS = 25;
@@ -358,22 +359,52 @@ async function adjustGroup(groupObjectId, { amount, type, remark, createdBy } = 
   }
 }
 
-async function listGroups({ filter = {}, page = 1, limit = 20 } = {}) {
-  const { pageNum, limitNum, skip } = require('../utils/helpers').getPagination(page, limit);
+async function listGroups({ filter = {}, page = 1, limit = 20, cursor = null } = {}) {
+  const { pageNum: requestedPage, limitNum } = require('../utils/helpers').getPagination(page, limit);
+  const pageNum = cursor ? 1 : requestedPage;
+  const skip = cursor ? 0 : (requestedPage - 1) * limitNum;
+
+  // Count the filtered set, not just the rows after the cursor.
+  const countFilter = { ...filter };
+  applyCursor(filter, cursor);
   const [rows, count] = await Promise.all([
-    TelegramGroup.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean({ getters: true }),
-    TelegramGroup.countDocuments(filter),
+    TelegramGroup.find(filter)
+      .select('-statusHistory')
+      .sort({ createdAt: -1, _id: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean({ getters: true }),
+    TelegramGroup.countDocuments(countFilter),
   ]);
-  return { groups: rows, count, page: pageNum, limit: limitNum, totalPages: Math.ceil(count / limitNum) };
+  const nextCursor = rows.length === limitNum ? encodeCursor(rows[rows.length - 1]) : null;
+  return { groups: rows, count, page: pageNum, limit: limitNum, nextCursor, totalPages: Math.ceil(count / limitNum) };
 }
 
-async function listTransactions({ filter = {}, page = 1, limit = 20 } = {}) {
-  const { pageNum, limitNum, skip } = require('../utils/helpers').getPagination(page, limit);
+async function listTransactions({ filter = {}, page = 1, limit = 20, cursor = null } = {}) {
+  const { pageNum: requestedPage, limitNum } = require('../utils/helpers').getPagination(page, limit);
+  const pageNum = cursor ? 1 : requestedPage;
+  const skip = cursor ? 0 : (requestedPage - 1) * limitNum;
+
+  // Count the filtered set, not just the rows after the cursor.
+  const countFilter = { ...filter };
+  applyCursor(filter, cursor);
   const [rows, count] = await Promise.all([
-    BotTransaction.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean({ getters: true }),
-    BotTransaction.countDocuments(filter),
+    BotTransaction.find(filter)
+      .sort({ createdAt: -1, _id: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean({ getters: true }),
+    BotTransaction.countDocuments(countFilter),
   ]);
-  return { transactions: rows, count, page: pageNum, limit: limitNum, totalPages: Math.ceil(count / limitNum) };
+  const nextCursor = rows.length === limitNum ? encodeCursor(rows[rows.length - 1]) : null;
+  return {
+    transactions: rows,
+    count,
+    page: pageNum,
+    limit: limitNum,
+    nextCursor,
+    totalPages: Math.ceil(count / limitNum),
+  };
 }
 
 /**

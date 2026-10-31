@@ -6,6 +6,10 @@ import {
   buildMeta,
   echoFilters,
   escapeRegex,
+  encodeCursor,
+  parseCursor,
+  buildCursorFilter,
+  applyCursor,
 } from '../services/bot/query.js';
 
 describe('escapeRegex', () => {
@@ -128,5 +132,57 @@ describe('echoFilters', () => {
         'to',
       ])
     ).toEqual({ groupId: '-100', from: '2026-10-01' });
+  });
+});
+
+describe('keyset cursor', () => {
+  const row = {
+    _id: '6512f0c2a4b1c2d3e4f5a6b7',
+    createdAt: new Date('2026-10-31T09:12:00.123Z'),
+  };
+
+  it('round-trips a row through encode/parse', () => {
+    const cursor = encodeCursor(row);
+    expect(typeof cursor).toBe('string');
+    const parsed = parseCursor(cursor);
+    expect(parsed.createdAt.toISOString()).toBe(row.createdAt.toISOString());
+    expect(parsed.id).toBe(row._id);
+  });
+
+  it('treats a missing or blank cursor as no cursor', () => {
+    expect(encodeCursor(null)).toBeNull();
+    expect(parseCursor(undefined)).toBeNull();
+    expect(parseCursor('')).toBeNull();
+    expect(parseCursor('   ')).toBeNull();
+  });
+
+  it('rejects a malformed cursor', () => {
+    for (const value of ['not-a-cursor', Buffer.from('abc').toString('base64url'), Buffer.from('|id').toString('base64url')]) {
+      expect(() => parseCursor(value)).toThrow(/cursor is invalid/);
+    }
+  });
+
+  it('picks rows strictly older than the cursor row, with an _id tie-break', () => {
+    const filter = buildCursorFilter(parseCursor(encodeCursor(row)));
+    expect(filter.$or).toEqual([
+      { createdAt: { $lt: row.createdAt } },
+      { createdAt: row.createdAt, _id: { $lt: row._id } },
+    ]);
+  });
+
+  it('ANDs with existing filters and the resolved group scope', () => {
+    const filter = { status: 'success', $or: [{ group: 'g1' }] };
+    applyCursor(filter, { createdAt: row.createdAt, id: row._id });
+
+    expect(filter.status).toBe('success');
+    expect(filter.$or).toEqual([{ group: 'g1' }]);
+    expect(filter.$and).toHaveLength(1);
+    expect(filter.$and[0].$or).toHaveLength(2);
+  });
+
+  it('leaves a filter untouched without a cursor', () => {
+    const filter = { status: 'success' };
+    applyCursor(filter, null);
+    expect(filter).toEqual({ status: 'success' });
   });
 });

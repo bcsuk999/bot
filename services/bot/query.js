@@ -184,6 +184,48 @@ function applyGroupScope(filter, group) {
   return filter;
 }
 
+/**
+ * Keyset cursor for `createdAt: -1` lists. A cursor is opaque to clients:
+ * base64url of `<epoch millis>|<_id>`. Keyset paging avoids the O(skip) walk
+ * that makes deep `?page=500` requests slow, while `meta.total` stays accurate.
+ */
+function encodeCursor(doc) {
+  if (!doc || !doc.createdAt) return null;
+  const time = new Date(doc.createdAt).getTime();
+  if (Number.isNaN(time)) return null;
+  const id = doc._id == null ? '' : String(doc._id);
+  return Buffer.from(`${time}|${id}`, 'utf8').toString('base64url');
+}
+
+function parseCursor(value) {
+  if (value == null || String(value).trim() === '') return null;
+  const raw = Buffer.from(String(value).trim(), 'base64url').toString('utf8');
+  const separator = raw.indexOf('|');
+  const time = Number(raw.slice(0, separator));
+  const id = raw.slice(separator + 1);
+  if (separator < 1 || !Number.isFinite(time) || !id) {
+    throw httpError('cursor is invalid');
+  }
+  return { createdAt: new Date(time), id };
+}
+
+/** Strictly "older than this row" for a `createdAt DESC, _id DESC` sort. */
+function buildCursorFilter(cursor) {
+  return {
+    $or: [
+      { createdAt: { $lt: cursor.createdAt } },
+      { createdAt: cursor.createdAt, _id: { $lt: cursor.id } },
+    ],
+  };
+}
+
+/** AND the cursor clause with whatever filters were already built. */
+function applyCursor(filter, cursor) {
+  if (!cursor) return filter;
+  filter.$and = [...(filter.$and || []), buildCursorFilter(cursor)];
+  return filter;
+}
+
 module.exports = {
   GROUP_STATUSES,
   ORDER_STATUSES,
@@ -200,4 +242,8 @@ module.exports = {
   echoFilters,
   buildMeta,
   applyGroupScope,
+  encodeCursor,
+  parseCursor,
+  buildCursorFilter,
+  applyCursor,
 };

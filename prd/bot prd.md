@@ -467,7 +467,8 @@ List endpoints use one standard shape, so a panel can share pagination and filte
 ```
 
 - `data` is an array for lists, an object for single resources.
-- `meta` is always present on lists (`total`, `page`, `limit`, `totalPages`, `hasNextPage`, `hasPrevPage`).
+- `meta` is always present on lists (`total`, `page`, `limit`, `totalPages`, `hasNextPage`, `hasPrevPage`, `nextCursor`). `nextCursor` is `null` on the last page.
+- Deep pages can use keyset pagination: pass `?cursor=<meta.nextCursor>` instead of a page number. The cursor is opaque and encodes `createdAt` + `_id`; the server then skips zero documents. `page` reports `1` while a cursor is used. `page`/`limit` continue to work unchanged, so a panel can adopt the cursor without a breaking change. An invalid cursor returns `400 cursor is invalid`.
 - `filters` echoes only the filters actually applied.
 - `uid` is an **exact 5-digit** match; a value that is not 5 digits returns `400` rather than an empty list. It works on groups, orders and transactions (for orders/transactions it is resolved to the group first).
 - A 5-digit `groupId` is treated as a uid fallback, because the `/reg` reply shows the uid next to the id. A full Telegram id resolves to the group too; any other value stays a partial match. When a group resolves, the query is scoped to `$or: [{ group: _id }, { groupId: '<telegram id>' }]` so rows written before the `group` reference still appear.
@@ -476,18 +477,18 @@ List endpoints use one standard shape, so a panel can share pagination and filte
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/bot/groups` | List groups — `?groupId&uid&title&status=active\|banned\|suspended&from&to&page&limit` |
+| `GET` | `/api/bot/groups` | List groups — `?groupId&uid&title&status=active\|banned\|suspended&from&to&page&limit&cursor` |
 | `GET` | `/api/bot/groups/:groupId` | Group detail + balance + last 10 orders + `statusHistory` |
 | `PATCH` | `/api/bot/groups/:groupId/status` | `{ status: 'active' \| 'banned' \| 'suspended', remark }` — **remark required** |
 | `POST` | `/api/bot/groups/:groupId/ban` | `{ remark }` → `status: 'banned'` |
 | `POST` | `/api/bot/groups/:groupId/suspend` | `{ remark }` → `status: 'suspended'` |
 | `POST` | `/api/bot/groups/:groupId/unban` | `{ remark }` → `status: 'active'` |
 | `POST` | `/api/bot/groups/:groupId/adjust` | `{ amount, type: 'credit'\|'debit', remark }` → creates a `note: 'adjustment'` BotTransaction. Guards against negative resulting balance. |
-| `GET` | `/api/bot/orders` | List orders — `?orderId&groupId&uid&status&from&to&page&limit` |
+| `GET` | `/api/bot/orders` | List orders — `?orderId&groupId&uid&status&from&to&page&limit&cursor` |
 | `GET` | `/api/bot/orders/:orderId` | Order detail + its BotTransaction if credited |
 | `POST` | `/api/bot/orders/:orderId/approve` | Manually credit a stuck `pending` order (same atomic claim + credit path as the webhook) |
 | `POST` | `/api/bot/orders/:orderId/reject` | Mark `pending` → `failed` |
-| `GET` | `/api/bot/transactions` | List ledger rows — `?trnId&orderId&groupId&uid&type&note&status&from&to&page&limit`. An unknown `uid` returns `404 Group not found for uid: <uid>`. A 5-digit `groupId` is accepted as a uid. |
+| `GET` | `/api/bot/transactions` | List ledger rows — `?trnId&orderId&groupId&uid&type&note&status&from&to&page&limit&cursor`. An unknown `uid` returns `404 Group not found for uid: <uid>`. A 5-digit `groupId` is accepted as a uid. |
 | `GET` | `/api/bot/transactions/:trnId` | One ledger row |
 | `GET` | `/api/bot/stats/:groupId` | `?window=today\|all` → same shape as `/daily` |
 | `GET` | `/api/bot/health` | Bot connected?, transport mode, registered group count (no auth — mirrors existing `/` health check) |
@@ -498,8 +499,9 @@ All admin routes: `auth, requireAdmin`. Errors follow the existing pattern: `thr
 
 ### 10.1 Query behaviour and cost
 
-- A page of groups is decorated with **one** aggregation for balances (latest `success` row per group), never one query per group.
+- A page of groups is decorated with **one** aggregation for balances (latest `success` row per group), never one query per group. The group list also omits `statusHistory` (it is unbounded; the detail endpoint returns it).
 - Every list issues `find` and `countDocuments` in parallel on the same filter, and both use `lean({ getters: true })`.
+- Lists sort by `{ createdAt: -1, _id: -1 }`, so `?cursor=` keyset paging is stable even when several rows share a timestamp.
 - A resolved group filter is `$or: [{ group: _id }, { groupId: '<telegram id>' }]` (two indexed equality arms) rather than an unanchored case-insensitive regex, which Mongo cannot serve from an index.
 - Free-text filters (`groupId` partial, `title`, `orderId`, `trnId`) are intentionally regex and therefore collection scans bounded by the other indexed predicates. The uid path is exact because it is indexed and unique.
 - Compound indexes follow ESR (equality → sort → range), e.g. `{ status: 1, createdAt: -1 }`, `{ groupId: 1, createdAt: -1 }`.
@@ -573,7 +575,7 @@ Vitest, matching the existing pure-unit convention (`tests/*.test.js`, ESM `impo
 - `tests/upilink.test.js` — full UPI URI, missing `am`, missing `pa`, malformed VPA, non-`upi` scheme, empty string
 - `tests/botAmount.test.js` — below min, above max, exact bounds, `NaN`, zero, negative, `"400.50"` string, `"1,000"` rejection
 - `tests/botGuard.test.js` — allowlisted group, owner in DM, owner in non-allowlisted group, private DM from stranger, public group not in allowlist, empty allowlist (open to any group), malformed allowlist env, and the exact banned/suspended denial messages
-- `tests/botQuery.test.js` — group/order/transaction filters, regex escaping, enum validation, inclusive date range (`to` date-only covers the whole day), reversed-range rejection, pagination `meta`, filter echo
+- `tests/botQuery.test.js` — group/order/transaction filters, regex escaping, enum validation, inclusive date range (`to` date-only covers the whole day), reversed-range rejection, pagination `meta`, filter echo, keyset cursor round-trip/malformed input/AND-composition
 - `tests/botUid.test.js` — 5-digit uid validation, generation bounds, exact group filter, malformed uid → `400`, and `uid` staying out of the transaction Mongo filter (resolved in the controller)
 - `tests/botMenu.test.js` — `/` command menu scopes and group help omitting `/reg`
 - `tests/botStatus.test.js` — `/status` slip for pending/success/failed, `Success on` only for success, `paidAt` → `updatedAt` fallback, missing order
@@ -615,6 +617,7 @@ The webhook signature path is still only manually verified — recommend a real 
 24. `GET /api/bot/groups?uid=32045` returns exactly that group; `GET /api/bot/groups/32045` and `GET /api/bot/stats/32045` work without the Telegram id; `GET /api/bot/transactions?uid=32045` returns that group's ledger rows (including rows written before uid existed); a uid of `3204` returns `400`; an unknown 5-digit uid on transactions returns `404`.
 25. `GET /api/bot/transactions?groupId=32045` (a uid pasted into the group-id box) returns the same rows as `?uid=32045`; `?groupId=-1001234567890` returns every row of that group, including rows that only carry the stored `groupId` string; `GET /api/bot/orders?groupId=32045` behaves the same.
 26. A page of 20 groups uses one balance aggregation, not 20 separate balance queries.
+27. A list response carries `meta.nextCursor`; passing it back as `?cursor=` returns the next older page with no overlap, works together with `groupId`/`uid` and date filters, and an invalid cursor returns `400 cursor is invalid`.
 
 ## 16. Open Questions
 

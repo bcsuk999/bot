@@ -11,6 +11,9 @@ const {
   echoFilters,
   pickUid,
   applyGroupScope,
+  applyCursor,
+  parseCursor,
+  encodeCursor,
 } = require('../services/bot/query');
 const { getPagination, toNum } = require('../utils/helpers');
 const { health } = require('../services/bot/client');
@@ -91,7 +94,8 @@ exports.listGroups = async (req, res) => {
   try {
     const { page, limit } = req.query;
     const filter = buildGroupFilter(req.query);
-    const result = await botGroupService.listGroups({ filter, page, limit });
+    const cursor = parseCursor(req.query.cursor);
+    const result = await botGroupService.listGroups({ filter, page, limit, cursor });
 
     // One aggregation for the whole page instead of one query per group.
     const balances = await botGroupService.getGroupBalances(result.groups.map((g) => g._id));
@@ -101,7 +105,7 @@ exports.listGroups = async (req, res) => {
       success: true,
       msg: 'Bot groups fetched',
       data: groups,
-      meta: buildMeta({ total: result.count, page: result.page, limit: result.limit }),
+      meta: { ...buildMeta({ total: result.count, page: result.page, limit: result.limit }), nextCursor: result.nextCursor ?? null },
       filters: echoFilters(req.query, ['groupId', 'uid', 'title', 'status', 'from', 'to']),
     });
   } catch (err) {
@@ -228,7 +232,7 @@ async function scopeByGroup(filter, query = {}) {
 }
 
 // GET /api/bot/orders
-// Filters: ?orderId=&groupId=&uid=&status=&from=&to=&page=&limit=
+// Filters: ?orderId=&groupId=&uid=&status=&from=&to=&page=&limit=&cursor=
 exports.listOrders = async (req, res) => {
   try {
     const { page, limit } = req.query;
@@ -239,17 +243,29 @@ exports.listOrders = async (req, res) => {
       return res.status(404).json({ success: 'failed', msg: `Group not found for uid: ${notFoundUid}` });
     }
 
-    const { pageNum, limitNum, skip } = getPagination(page, limit);
+    const cursor = parseCursor(req.query.cursor);
+    // Count the filtered set, not just the rows after the cursor.
+    const countFilter = { ...filter };
+    applyCursor(filter, cursor);
+
+    const { pageNum: requestedPage, limitNum } = getPagination(page, limit);
+    const pageNum = cursor ? 1 : requestedPage;
+    const skip = cursor ? 0 : (requestedPage - 1) * limitNum;
     const [rows, count] = await Promise.all([
-      BotOrder.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean({ getters: true }),
-      BotOrder.countDocuments(filter),
+      BotOrder.find(filter)
+        .sort({ createdAt: -1, _id: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean({ getters: true }),
+      BotOrder.countDocuments(countFilter),
     ]);
+    const nextCursor = rows.length === limitNum ? encodeCursor(rows[rows.length - 1]) : null;
 
     return res.json({
       success: true,
       msg: 'Bot orders fetched',
       data: rows.map(serializeOrder),
-      meta: buildMeta({ total: count, page: pageNum, limit: limitNum }),
+      meta: { ...buildMeta({ total: count, page: pageNum, limit: limitNum }), nextCursor },
       filters: echoFilters(req.query, ['orderId', 'groupId', 'uid', 'status', 'from', 'to']),
     });
   } catch (err) {
@@ -299,14 +315,15 @@ exports.listTransactions = async (req, res) => {
       return res.status(404).json({ success: 'failed', msg: `Group not found for uid: ${notFoundUid}` });
     }
 
-    const result = await botGroupService.listTransactions({ filter, page, limit });
+    const cursor = parseCursor(req.query.cursor);
+    const result = await botGroupService.listTransactions({ filter, page, limit, cursor });
     const uids = await botGroupService.getGroupUids(result.transactions.map((t) => t.group));
 
     return res.json({
       success: true,
       msg: 'Bot transactions fetched',
       data: result.transactions.map((t) => serializeTransaction(t, uids.get(String(t.group)) || null)),
-      meta: buildMeta({ total: result.count, page: result.page, limit: result.limit }),
+      meta: { ...buildMeta({ total: result.count, page: result.page, limit: result.limit }), nextCursor: result.nextCursor ?? null },
       filters: echoFilters(req.query, ['trnId', 'orderId', 'groupId', 'uid', 'type', 'note', 'status', 'from', 'to']),
     });
   } catch (err) {
