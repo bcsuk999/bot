@@ -1,6 +1,6 @@
 const botGroupService = require('../botGroupService');
 const { enforce, DENY } = require('./guard');
-const { HELP } = require('./handlers/help');
+const { helpText } = require('./handlers/help');
 const { cmdReg } = require('./handlers/reg');
 const { cmdBalance } = require('./handlers/balance');
 const { cmdDeposit } = require('./handlers/deposit');
@@ -11,6 +11,55 @@ const logger = require('../../utils/logger');
 // Commands that need an active member (a registered, non-banned group).
 const GROUP_COMMANDS = new Set(['/balance', '/deposit', '/daily']);
 const ALL_COMMANDS = new Set(['/start', '/reg', '/balance', '/deposit', '/daily']);
+
+// The "/" menus Telegram renders per chat scope (Bot API setMyCommands).
+// /reg is absent from the group menu on purpose: a normal group member must not
+// be told that registration exists. It is advertised only in the owner's DM.
+const GROUP_MENU = [
+  { command: 'start', description: 'Show bot info and command list' },
+  { command: 'balance', description: 'Show this group balance' },
+  { command: 'deposit', description: 'Create a deposit: /deposit <amount>' },
+  { command: 'daily', description: 'Show this group deposit statistics' },
+];
+
+const OWNER_MENU = [
+  { command: 'start', description: 'Show bot info and command list' },
+  { command: 'reg', description: 'Register a group (run it inside the group)' },
+];
+
+/**
+ * Register the Telegram command menus shown when a user types "/".
+ *
+ * - all_group_chats: group menu, no /reg
+ * - owner's private chat: owner menu, with /reg
+ *
+ * Best-effort: menus are cosmetic, so a failure is logged, never thrown. The
+ * owner scope also needs the owner to have started the bot at least once, or
+ * Telegram answers "chat not found".
+ */
+async function setupCommandMenus(client, config) {
+  const calls = [
+    ['all_group_chats', client.setMyCommands(GROUP_MENU, { scope: { type: 'all_group_chats' } })],
+  ];
+  if (config?.ownerId) {
+    calls.push([
+      'owner_private',
+      client.setMyCommands(OWNER_MENU, { scope: { type: 'chat', chat_id: config.ownerId } }),
+    ]);
+  }
+
+  const results = await Promise.allSettled(calls.map(([, promise]) => promise));
+  results.forEach((result, i) => {
+    if (result.status === 'rejected') {
+      logger.warn(
+        { scope: calls[i][0], msg: result.reason?.message },
+        'bot: failed to set command menu'
+      );
+    }
+  });
+
+  return results.every((result) => result.status === 'fulfilled');
+}
 
 function parseCommand(text) {
   if (typeof text !== 'string' || !text.startsWith('/')) return null;
@@ -38,24 +87,34 @@ async function handleMessage(msg, client, config) {
     return client.sendMessage(chat.id, text);
   }
 
+  const isOwnerDm = chat.type === 'private' && decision.reason === 'owner';
+
   // 2. Unknown command -> help. Non-command DMs from the owner -> help hint.
   if (!parsed || parsed.unknown) {
-    return client.sendMessage(chat.id, HELP);
+    return client.sendMessage(chat.id, helpText({ isOwner: isOwnerDm }));
   }
 
-  // 3. Member lookup. The group is the member; groupId is the only identity.
-  const isOwner = decision.reason === 'owner';
-  let group = null;
-  let isRegistered = false;
-
+  // 3. Private chats are owner-only (guard above). A wallet belongs to a group,
+  // so group commands cannot run here; /reg in DM only points at the group.
   if (chat.type === 'private') {
-    // Private chats are owner-only (handled above). /reg and /start are not
-    // meaningful for a personal chat, so point the owner at the group commands.
-    return client.sendMessage(chat.id, 'ℹ️ Group commands must be run inside an authorised group.');
+    if (command === '/start') {
+      return client.sendMessage(
+        chat.id,
+        ['This bot works inside groups.', '', helpText({ isOwner: true })].join('\n')
+      );
+    }
+    if (command === '/reg') {
+      return client.sendMessage(
+        chat.id,
+        'Run /reg inside the group you want to register. A wallet belongs to the group, not to a person.'
+      );
+    }
+    return client.sendMessage(chat.id, 'Group commands must be run inside an authorised group.');
   }
 
-  group = await botGroupService.getGroupByGroupId(chat.id);
-  isRegistered = !!group;
+  // 4. Member lookup. The group is the member; groupId is the only identity.
+  let group = await botGroupService.getGroupByGroupId(chat.id);
+  const isRegistered = !!group;
 
   if (GROUP_COMMANDS.has(command) && !isRegistered) {
     return client.sendMessage(chat.id, DENY.NOT_REGISTERED);
@@ -67,7 +126,7 @@ async function handleMessage(msg, client, config) {
   ctx.group = group;
   ctx.isRegistered = isRegistered;
 
-  // 4. Dispatch.
+  // 5. Dispatch.
   let result;
   try {
     switch (command) {
@@ -87,11 +146,11 @@ async function handleMessage(msg, client, config) {
         result = await cmdDaily(ctx);
         break;
       default:
-        return client.sendMessage(chat.id, HELP);
+        return client.sendMessage(chat.id, helpText());
     }
   } catch (err) {
     logger.error({ err, command, chatId: chat.id, userId: from.id }, 'bot: command failed');
-    return client.sendMessage(chat.id, '❌ Something went wrong. Please try again.');
+    return client.sendMessage(chat.id, 'Something went wrong. Please try again.');
   }
 
   if (result?.shouldAlert) {
@@ -111,4 +170,13 @@ function register(client, config) {
   return true;
 }
 
-module.exports = { register, handleMessage, parseCommand };
+module.exports = {
+  register,
+  handleMessage,
+  parseCommand,
+  setupCommandMenus,
+  GROUP_MENU,
+  OWNER_MENU,
+  GROUP_COMMANDS,
+  ALL_COMMANDS,
+};

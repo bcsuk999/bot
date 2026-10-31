@@ -1,6 +1,6 @@
 const botGroupService = require('../../botGroupService');
 const { formatInr, formatIst, label } = require('../format');
-const { HELP } = require('./help');
+const { helpText } = require('./help');
 const logger = require('../../../utils/logger');
 
 // /reg is member creation. The row it writes is the member, keyed on groupId.
@@ -31,7 +31,7 @@ async function cmdReg(ctx) {
     `${label('Registered At')}: ${formatIst(member.createdAt)}`,
     `${label('Registered By')}: ${from?.username ? `@${from.username} (${from.id})` : from?.id || '-'}`,
     '',
-    HELP,
+    helpText(),
   ].join('\n');
 
   logger.info({ groupId: member.groupId, alreadyRegistered }, 'bot: /reg');

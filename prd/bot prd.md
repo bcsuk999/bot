@@ -151,6 +151,15 @@ Indexes: unique `{ trnId: 1 }`, `{ group: 1, status: 1 }`, `{ group: 1, createdA
 
 All handlers live in `services/bot/handlers/`. Every command runs through the guard (§7) first. Group-scoped commands only work in group/supergroup chats.
 
+**Command menus (`/`)** — on startup the bot calls `setMyCommands` for two scopes:
+
+| Scope | Commands shown |
+|---|---|
+| `all_group_chats` | `/start`, `/balance`, `/deposit`, `/daily` — **`/reg` is not listed** |
+| `chat` = `TELEGRAM_OWNER_ID` | `/start`, `/reg` |
+
+So in any group, typing `/` lists only the member commands; a normal user is never shown that registration exists. `/reg` appears only in the owner's private chat, where it replies `Run /reg inside the group you want to register.` — the wallet belongs to a group, not to a person. The group help block likewise omits `/reg`; only the owner's DM help includes it. `setMyCommands` is best-effort: a failure (e.g. the owner has never started the bot, so the chat does not exist yet) is logged and never blocks startup, and re-publishing runs on the next restart.
+
 ### 6.1 `/start` — onboarding
 
 - Allowlisted, unregistered → `This group is allowlisted. Run /reg to activate its wallet.`

@@ -1,6 +1,6 @@
 const botGroupService = require('../../botGroupService');
 const { formatInr, label } = require('../format');
-const { HELP } = require('./help');
+const { helpText } = require('./help');
 
 async function cmdStart(ctx) {
   const { group, isRegistered } = ctx;
@@ -14,12 +14,12 @@ async function cmdStart(ctx) {
         `${label('Group ID')}: ${group.groupId}`,
         `${label('Balance')}  : ${formatInr(balance)}`,
         '',
-        HELP,
+        helpText(),
       ].join('\n'),
     };
   }
 
-  return { text: `👋 This group is authorised.\n\nRun /reg to create its wallet.\n\n${HELP}` };
+  return { text: `👋 This group is authorised.\n\nRun /reg to create its wallet.\n\n${helpText()}` };
 }
 
 module.exports = { cmdStart };

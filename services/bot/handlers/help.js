@@ -1,9 +1,22 @@
-const HELP = [
-  'Commands:',
-  '/reg     - Register this group and create its wallet',
+// Command list shown inside the bot. /reg is deliberately absent from the group
+// version: only the owner's private chat advertises it. See setupCommandMenus()
+// in services/bot/commands.js for the Telegram "/" menu.
+
+const GROUP_LINES = [
   '/balance - Check this group balance',
   '/deposit <amount> - Create a deposit',
   '/daily   - This group deposit statistics',
-].join('\n');
+];
 
-module.exports = { HELP };
+const REG_LINE = '/reg     - Register a group (run it inside the group)';
+
+function helpText({ isOwner = false } = {}) {
+  const lines = ['Commands:'];
+  if (isOwner) lines.push(REG_LINE);
+  lines.push(...GROUP_LINES);
+  return lines.join('\n');
+}
+
+const HELP = helpText();
+
+module.exports = { HELP, helpText, REG_LINE, GROUP_LINES };

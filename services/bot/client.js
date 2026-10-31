@@ -51,7 +51,7 @@ async function startBot() {
     client.on('polling_error', (err) => logger.error({ msg: err?.message }, 'bot: polling error'));
     client.on('error', (err) => logger.error({ msg: err?.message }, 'bot: client error'));
 
-    const { register } = require('./commands');
+    const { register, setupCommandMenus } = require('./commands');
     registered = register(client, config);
     if (!registered) throw new Error('command registration failed');
 
@@ -64,6 +64,15 @@ async function startBot() {
     running = true;
     lastError = null;
     logger.info({ bot: me?.username, mode: config.mode }, 'bot: connected');
+
+    // Register the "/" command menus (group + owner DM). Cosmetic: a failure
+    // must not take a working bot down.
+    try {
+      await setupCommandMenus(client, config);
+    } catch (err) {
+      logger.warn({ msg: err?.message }, 'bot: command menus not set');
+    }
+
     return { started: true, reason: 'ok', mode: config.mode };
   } catch (err) {
     lastError = err?.message || String(err);
