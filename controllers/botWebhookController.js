@@ -98,14 +98,22 @@ async function claimOrder(orderId, set, session) {
  * Returns { action: 'credited' | 'already_*' | 'race_lost', ... }.
  * Throws only if the transaction could not be committed at all.
  */
-async function settleSuccess(merOrderNo, orderStatus) {
+async function settleSuccess(
+  merOrderNo,
+  orderStatus,
+  { orderRemark, transactionRemark } = {}
+) {
   const session = await mongoose.startSession();
   try {
     let result;
     await session.withTransaction(async () => {
       const claimed = await claimOrder(
         merOrderNo,
-        { status: 'success', paidAt: new Date(), remark: `SimplyPay status: ${orderStatus}` },
+        {
+          status: 'success',
+          paidAt: new Date(),
+          remark: orderRemark ?? `SimplyPay status: ${orderStatus}`,
+        },
         session
       );
       if (!claimed) {
@@ -114,7 +122,7 @@ async function settleSuccess(merOrderNo, orderStatus) {
       }
 
       const { transaction, credited, balance } = await botGroupService.creditGroup(claimed, {
-        remark: `Group deposit ${claimed.orderId}`,
+        remark: transactionRemark ?? `Group deposit ${claimed.orderId}`,
         session,
       });
       await BotOrder.updateOne({ _id: claimed._id }, { $set: { trnId: transaction.trnId } }, { session });

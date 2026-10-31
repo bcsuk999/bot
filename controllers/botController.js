@@ -1,7 +1,7 @@
 const BotOrder = require('../models/BotOrder');
 const BotTransaction = require('../models/BotTransaction');
 const botGroupService = require('../services/botGroupService');
-const { claimOrder } = require('./botWebhookController');
+const { claimOrder, settleSuccess } = require('./botWebhookController');
 const { getGroupStats, getGroupOrderCounts } = require('../services/bot/stats');
 const {
   buildGroupFilter,
@@ -361,27 +361,21 @@ exports.approveOrder = async (req, res) => {
       return res.status(400).json({ success: 'failed', msg: `Cannot approve, status is ${peek.status}` });
     }
 
-    const order = await claimOrder(orderId, {
-      status: 'success',
-      paidAt: new Date(),
-      remark: 'Manually approved by admin',
+    const settled = await settleSuccess(orderId, null, {
+      orderRemark: 'Manually approved by admin',
+      transactionRemark: `Manual approval ${orderId}`,
     });
-    if (!order) {
+    if (settled.action !== 'credited') {
       return res.status(409).json({ success: 'failed', msg: 'Order was already settled' });
     }
-
-    const { transaction, credited, balance } = await botGroupService.creditGroup(order, {
-      remark: `Manual approval ${order.orderId}`,
-    });
-    await BotOrder.updateOne({ _id: order._id }, { $set: { trnId: transaction.trnId } });
 
     return res.status(201).json({
       success: true,
       msg: 'Order approved and credited',
-      orderId: order.orderId,
-      credited,
-      trnId: transaction.trnId,
-      balance,
+      orderId: settled.order.orderId,
+      credited: settled.credited,
+      trnId: settled.trnId,
+      balance: settled.balance,
     });
   } catch (err) {
     return fail(res, err, 'Failed to approve order');

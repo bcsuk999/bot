@@ -8,8 +8,9 @@
  * Verifies:
  *   1. a single settlement credits exactly the order face value
  *   2. replaying the same gateway callback does NOT credit twice
- *   3. two concurrent settlements for the same group both land (no lost update)
- *   4. a forced mid-transaction failure leaves the order pending and no ledger row
+ *   3. admin-style approval uses the same atomic claim-and-credit transaction
+ *   4. two concurrent settlements for the same group both land (no lost update)
+ *   5. a forced mid-transaction failure leaves the order pending and no ledger row
  */
 require('dotenv').config();
 require('node:dns').setServers(['8.8.8.8', '1.1.1.1']);
@@ -75,18 +76,31 @@ async function makeOrder(amount) {
   const rows2 = await BotTransaction.countDocuments({ group: group._id });
   check('still exactly 1 ledger row', rows2 === 1, `got ${rows2}`);
 
-  console.log('\n3. two concurrent settlements for one group both land');
+  console.log('\n3. admin approval credits atomically with an audit remark');
+  const manual = await makeOrder(125);
+  const manualResult = await settleSuccess(manual.orderId, null, {
+    orderRemark: 'Manually approved by admin',
+    transactionRemark: `Manual approval ${manual.orderId}`,
+  });
+  const manualOrder = await BotOrder.findById(manual._id);
+  const manualTransaction = await BotTransaction.findOne({ order: manual._id });
+  check('manual approval credited', manualResult.action === 'credited', JSON.stringify(manualResult));
+  check('order records manual approval', manualOrder.remark === 'Manually approved by admin');
+  check('ledger records manual approval', manualTransaction.remark === `Manual approval ${manual.orderId}`);
+  check('manual approval balance = 525', await botGroupService.getGroupBalance(group._id) === 525);
+
+  console.log('\n4. two concurrent settlements for one group both land');
   const b = await makeOrder(250);
   const c = await makeOrder(150);
   const results = await Promise.allSettled([settleSuccess(b.orderId, 2), settleSuccess(c.orderId, 2)]);
   const bal3 = await botGroupService.getGroupBalance(group._id);
   const rows3 = await BotTransaction.countDocuments({ group: group._id });
   check('both settled without error', results.every((x) => x.status === 'fulfilled'), JSON.stringify(results.map((r) => r.status)));
-  check('balance = 400+250+150 = 800', bal3 === 800, `got ${bal3}`);
-  check('3 ledger rows', rows3 === 3, `got ${rows3}`);
-  check('balanceAfter values are unique', new Set((await BotTransaction.find({ group: group._id }).lean()).map((r) => String(r.balanceAfter))).size === 3);
+  check('balance = 400+125+250+150 = 925', bal3 === 925, `got ${bal3}`);
+  check('4 ledger rows', rows3 === 4, `got ${rows3}`);
+  check('balanceAfter values are unique', new Set((await BotTransaction.find({ group: group._id }).lean()).map((r) => String(r.balanceAfter))).size === 4);
 
-  console.log('\n4. a crash mid-transaction rolls the whole thing back');
+  console.log('\n5. a crash mid-transaction rolls the whole thing back');
   const d = await makeOrder(999);
   const session = await mongoose.startSession();
   const realCreate = BotTransaction.create.bind(BotTransaction);
@@ -104,13 +118,13 @@ async function makeOrder(amount) {
   const bal4 = await botGroupService.getGroupBalance(group._id);
   check('crash propagated', !!threw, `threw=${threw}`);
   check('order NOT left marked success', orderAfter.status === 'pending', `status=${orderAfter.status}`);
-  check('no ledger row written', (await BotTransaction.countDocuments({ group: group._id })) === 3);
-  check('balance unchanged at 800', bal4 === 800, `got ${bal4}`);
+  check('no ledger row written', (await BotTransaction.countDocuments({ group: group._id })) === 4);
+  check('balance unchanged at 925', bal4 === 925, `got ${bal4}`);
 
-  console.log('\n5. retry after the crash succeeds (order is still claimable)');
+  console.log('\n6. retry after the crash succeeds (order is still claimable)');
   const r5 = await settleSuccess(d.orderId, 2);
   check('retry credited', r5.action === 'credited', JSON.stringify(r5));
-  check('balance = 800+999 = 1799', (await botGroupService.getGroupBalance(group._id)) === 1799);
+  check('balance = 925+999 = 1924', (await botGroupService.getGroupBalance(group._id)) === 1924);
 
   // cleanup
   await BotTransaction.deleteMany({ group: group._id });
