@@ -17,7 +17,14 @@ async function cmdReg(ctx) {
   });
 
   if (blocked) {
-    return { text: 'This group is blocked. Contact the owner.', shouldAlert: true, reason: 'banned_group' };
+    const suspended = member.status === 'suspended';
+    return {
+      text: suspended
+        ? 'This group is suspended. Please contact support for further help.'
+        : 'This group is banned. Please contact support for further help.',
+      shouldAlert: true,
+      reason: `${member.status}_group`,
+    };
   }
 
   const balance = await botGroupService.getGroupBalance(member._id);

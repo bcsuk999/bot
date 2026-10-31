@@ -124,6 +124,9 @@ async function handleMessage(msg, client, config) {
   if (group && group.status === 'banned') {
     return client.sendMessage(chat.id, DENY.BANNED);
   }
+  if (group && group.status === 'suspended') {
+    return client.sendMessage(chat.id, DENY.SUSPENDED);
+  }
 
   ctx.group = group;
   ctx.isRegistered = isRegistered;

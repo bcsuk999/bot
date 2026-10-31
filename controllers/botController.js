@@ -3,6 +3,13 @@ const BotTransaction = require('../models/BotTransaction');
 const botGroupService = require('../services/botGroupService');
 const { claimOrder } = require('./botWebhookController');
 const { getGroupStats, getGroupOrderCounts } = require('../services/bot/stats');
+const {
+  buildGroupFilter,
+  buildOrderFilter,
+  buildTransactionFilter,
+  buildMeta,
+  echoFilters,
+} = require('../services/bot/query');
 const { getPagination, toNum } = require('../utils/helpers');
 const { health } = require('../services/bot/client');
 const logger = require('../utils/logger');
@@ -32,38 +39,66 @@ function serializeOrder(o) {
   };
 }
 
+function serializeGroup(g, balance) {
+  return {
+    groupId: g.groupId,
+    title: g.title,
+    username: g.username,
+    type: g.type,
+    status: g.status,
+    statusRemark: g.statusRemark || '',
+    statusUpdatedAt: g.statusUpdatedAt || null,
+    statusUpdatedBy: g.statusUpdatedBy ?? null,
+    balance,
+    totalDeposits: g.totalDeposits,
+    totalCredited: toNum(g.totalCredited),
+    totalFailed: g.totalFailed,
+    registeredBy: g.registeredBy,
+    createdAt: g.createdAt,
+    lastActiveAt: g.lastActiveAt,
+  };
+}
+
+function serializeTransaction(t) {
+  return {
+    trnId: t.trnId,
+    groupId: t.groupId,
+    orderId: t.orderId,
+    amount: toNum(t.amount),
+    type: t.type,
+    note: t.note,
+    balanceAfter: toNum(t.balanceAfter),
+    status: t.status,
+    createdBy: t.createdBy ?? null,
+    remark: t.remark || '',
+    createdAt: t.createdAt,
+    updatedAt: t.updatedAt,
+  };
+}
+
 // GET /api/bot/health - no auth, mirrors the existing root health check
 exports.health = async (req, res) => {
   return res.json({ success: true, bot: health() });
 };
 
 // GET /api/bot/groups
+// Filters: ?groupId=&title=&status=active|banned|suspended&from=&to=&page=&limit=
 exports.listGroups = async (req, res) => {
   try {
-    const { status, page, limit } = req.query;
-    const result = await botGroupService.listGroups({ status, page, limit });
+    const { page, limit } = req.query;
+    const filter = buildGroupFilter(req.query);
+    const result = await botGroupService.listGroups({ filter, page, limit });
+
     const groups = await Promise.all(
-      result.groups.map(async (g) => ({
-        groupId: g.groupId,
-        title: g.title,
-        username: g.username,
-        type: g.type,
-        status: g.status,
-        balance: await botGroupService.getGroupBalance(g._id),
-        totalDeposits: g.totalDeposits,
-        totalFailed: g.totalFailed,
-        registeredBy: g.registeredBy,
-        createdAt: g.createdAt,
-      }))
+      result.groups.map(async (g) => serializeGroup(g, await botGroupService.getGroupBalance(g._id)))
     );
+
     return res.json({
       success: true,
       msg: 'Bot groups fetched',
-      count: result.count,
-      page: result.page,
-      limit: result.limit,
-      totalPages: result.totalPages,
-      groups,
+      data: groups,
+      meta: buildMeta({ total: result.count, page: result.page, limit: result.limit }),
+      filters: echoFilters(req.query, ['groupId', 'title', 'status', 'from', 'to']),
     });
   } catch (err) {
     return fail(res, err, 'Failed to fetch bot groups');
@@ -84,38 +119,56 @@ exports.getGroup = async (req, res) => {
 
     return res.json({
       success: true,
-      group: {
-        groupId: group.groupId,
-        title: group.title,
-        username: group.username,
-        type: group.type,
-        status: group.status,
-        balance,
-        totalDeposits: group.totalDeposits,
-        totalCredited: toNum(group.totalCredited),
-        totalFailed: group.totalFailed,
-        registeredBy: group.registeredBy,
-        createdAt: group.createdAt,
-        lastActiveAt: group.lastActiveAt,
+      data: {
+        group: serializeGroup(group, balance),
+        statusHistory: group.statusHistory || [],
+        counts,
+        recentOrders: orders.map(serializeOrder),
       },
-      counts,
-      recentOrders: orders.map(serializeOrder),
     });
   } catch (err) {
     return fail(res, err, 'Failed to fetch group');
   }
 };
 
-// PATCH /api/bot/groups/:groupId/status
-exports.updateGroupStatus = async (req, res) => {
+async function changeGroupStatus(req, res, status) {
   try {
-    const { status } = req.body;
-    const group = await botGroupService.setGroupStatus(req.params.groupId, status);
-    return res.json({ success: true, msg: 'Group status updated', groupId: group.groupId, status: group.status });
+    const remark = req.body?.remark;
+    const group = await botGroupService.setGroupStatus(req.params.groupId, status, {
+      remark,
+      changedBy: req.user?.userid ?? null,
+    });
+
+    const msg = status === 'banned' ? 'Group banned' : status === 'suspended' ? 'Group suspended' : 'Group unbanned';
+    return res.json({
+      success: true,
+      msg,
+      data: {
+        groupId: group.groupId,
+        status: group.status,
+        remark: group.statusRemark,
+        updatedAt: group.statusUpdatedAt,
+        updatedBy: group.statusUpdatedBy,
+      },
+    });
   } catch (err) {
     return fail(res, err, 'Failed to update group status');
   }
+}
+
+// PATCH /api/bot/groups/:groupId/status  { status, remark }
+exports.updateGroupStatus = async (req, res) => {
+  return changeGroupStatus(req, res, req.body?.status);
 };
+
+// POST /api/bot/groups/:groupId/ban      { remark }
+exports.banGroup = async (req, res) => changeGroupStatus(req, res, 'banned');
+
+// POST /api/bot/groups/:groupId/suspend  { remark }
+exports.suspendGroup = async (req, res) => changeGroupStatus(req, res, 'suspended');
+
+// POST /api/bot/groups/:groupId/unban    { remark }
+exports.unbanGroup = async (req, res) => changeGroupStatus(req, res, 'active');
 
 // POST /api/bot/groups/:groupId/adjust
 exports.adjustGroup = async (req, res) => {
@@ -145,17 +198,11 @@ exports.adjustGroup = async (req, res) => {
 };
 
 // GET /api/bot/orders
+// Filters: ?orderId=&groupId=&status=&from=&to=&page=&limit=
 exports.listOrders = async (req, res) => {
   try {
-    const { groupId, status, from, to, page, limit } = req.query;
-    const filter = {};
-    if (groupId) filter.groupId = String(groupId);
-    if (status && ['pending', 'success', 'failed', 'expired', 'reversed'].includes(status)) filter.status = status;
-    if (from || to) {
-      filter.createdAt = {};
-      if (from) filter.createdAt.$gte = new Date(from);
-      if (to) filter.createdAt.$lte = new Date(to);
-    }
+    const { page, limit } = req.query;
+    const filter = buildOrderFilter(req.query);
 
     const { pageNum, limitNum, skip } = getPagination(page, limit);
     const [rows, count] = await Promise.all([
@@ -166,11 +213,9 @@ exports.listOrders = async (req, res) => {
     return res.json({
       success: true,
       msg: 'Bot orders fetched',
-      count,
-      page: pageNum,
-      limit: limitNum,
-      totalPages: Math.ceil(count / limitNum),
-      orders: rows.map(serializeOrder),
+      data: rows.map(serializeOrder),
+      meta: buildMeta({ total: count, page: pageNum, limit: limitNum }),
+      filters: echoFilters(req.query, ['orderId', 'groupId', 'status', 'from', 'to']),
     });
   } catch (err) {
     return fail(res, err, 'Failed to fetch orders');
@@ -189,13 +234,50 @@ exports.getOrder = async (req, res) => {
 
     return res.json({
       success: true,
-      order: serializeOrder(order),
-      transaction: transaction
-        ? { trnId: transaction.trnId, type: transaction.type, amount: toNum(transaction.amount), balanceAfter: toNum(transaction.balanceAfter), remark: transaction.remark }
-        : null,
+      msg: 'Bot order fetched',
+      data: {
+        order: serializeOrder(order),
+        transaction: transaction ? serializeTransaction(transaction) : null,
+      },
     });
   } catch (err) {
     return fail(res, err, 'Failed to fetch order');
+  }
+};
+
+// GET /api/bot/transactions
+// Filters: ?trnId=&orderId=&groupId=&type=credit|debit&note=&status=&from=&to=&page=&limit=
+exports.listTransactions = async (req, res) => {
+  try {
+    const { page, limit } = req.query;
+    const filter = buildTransactionFilter(req.query);
+    const result = await botGroupService.listTransactions({ filter, page, limit });
+
+    return res.json({
+      success: true,
+      msg: 'Bot transactions fetched',
+      data: result.transactions.map(serializeTransaction),
+      meta: buildMeta({ total: result.count, page: result.page, limit: result.limit }),
+      filters: echoFilters(req.query, ['trnId', 'orderId', 'groupId', 'type', 'note', 'status', 'from', 'to']),
+    });
+  } catch (err) {
+    return fail(res, err, 'Failed to fetch transactions');
+  }
+};
+
+// GET /api/bot/transactions/:trnId
+exports.getTransaction = async (req, res) => {
+  try {
+    const transaction = await BotTransaction.findOne({ trnId: req.params.trnId }).lean({ getters: true });
+    if (!transaction) return res.status(404).json({ success: 'failed', msg: 'Transaction not found' });
+
+    return res.json({
+      success: true,
+      msg: 'Bot transaction fetched',
+      data: serializeTransaction(transaction),
+    });
+  } catch (err) {
+    return fail(res, err, 'Failed to fetch transaction');
   }
 };
 

@@ -4,7 +4,8 @@ const { formatIst, escapeHtmlAll } = require('./format');
 const DENY = {
   NOT_AUTHORISED: 'This chat is not authorised to use this bot.',
   DM_NOT_ALLOWED: 'This bot is for authorised groups only.',
-  BANNED: 'This group is blocked. Contact the owner.',
+  BANNED: 'This group is banned. Please contact support for further help.',
+  SUSPENDED: 'This group is suspended. Please contact support for further help.',
   NOT_REGISTERED: 'This group is not registered yet. Run /reg first.',
 };
 

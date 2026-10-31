@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { resolveAuthority, shouldAlert, pruneAlertCache, resetAlertCache } from '../services/bot/guard.js';
+import { resolveAuthority, shouldAlert, pruneAlertCache, resetAlertCache, DENY } from '../services/bot/guard.js';
 import { loadConfig, parseAllowlist, parsePositiveNumber, parseExpiredStatuses, validateConfig } from '../services/bot/config.js';
 import { EXPIRED_STATUSES } from '../controllers/botWebhookController.js';
 
@@ -263,5 +263,15 @@ describe('alert de-duplication', () => {
     shouldAlert('x|1|/reg', 5, now);
     pruneAlertCache(5, now + 100);
     expect(shouldAlert('x|1|/reg', 1000, now + 100)).toBe(true);
+  });
+});
+
+describe('denial messages', () => {
+  it('tells a banned group to contact support', () => {
+    expect(DENY.BANNED).toBe('This group is banned. Please contact support for further help.');
+  });
+
+  it('tells a suspended group to contact support', () => {
+    expect(DENY.SUSPENDED).toBe('This group is suspended. Please contact support for further help.');
   });
 });

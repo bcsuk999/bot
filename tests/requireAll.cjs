@@ -17,6 +17,7 @@ const MODULES = [
   'services/bot/upilink',
   'services/bot/stats',
   'services/bot/guard',
+  'services/bot/query',
   'services/bot/client',
   'services/bot/commands',
   'services/bot/handlers/help',

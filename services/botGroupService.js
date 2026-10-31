@@ -20,8 +20,13 @@ async function registerGroup({ groupId, title, username, type, registeredBy, reg
   const existing = await TelegramGroup.findOne({ groupId: String(groupId) });
 
   if (existing) {
-    if (existing.status === 'banned') {
-      return { group: existing, alreadyRegistered: false, blocked: true };
+    if (existing.status !== 'active') {
+      return {
+        group: existing,
+        alreadyRegistered: false,
+        blocked: true,
+        status: existing.status,
+      };
     }
     // Idempotent: refresh descriptive fields only, never a second member row.
     if (title != null) existing.title = title;
@@ -205,9 +210,7 @@ async function adjustGroup(groupObjectId, { amount, type, remark, createdBy } = 
   }
 }
 
-async function listGroups({ status, page = 1, limit = 20 } = {}) {
-  const filter = {};
-  if (status && ['active', 'banned'].includes(status)) filter.status = status;
+async function listGroups({ filter = {}, page = 1, limit = 20 } = {}) {
   const { pageNum, limitNum, skip } = require('../utils/helpers').getPagination(page, limit);
   const [rows, count] = await Promise.all([
     TelegramGroup.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean({ getters: true }),
@@ -216,18 +219,49 @@ async function listGroups({ status, page = 1, limit = 20 } = {}) {
   return { groups: rows, count, page: pageNum, limit: limitNum, totalPages: Math.ceil(count / limitNum) };
 }
 
-async function setGroupStatus(groupId, status) {
-  if (!['active', 'banned'].includes(status)) {
-    throw createApprovalError('status must be active or banned');
+async function listTransactions({ filter = {}, page = 1, limit = 20 } = {}) {
+  const { pageNum, limitNum, skip } = require('../utils/helpers').getPagination(page, limit);
+  const [rows, count] = await Promise.all([
+    BotTransaction.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean({ getters: true }),
+    BotTransaction.countDocuments(filter),
+  ]);
+  return { transactions: rows, count, page: pageNum, limit: limitNum, totalPages: Math.ceil(count / limitNum) };
+}
+
+/**
+ * Change a group's moderation state. `remark` is mandatory for every change,
+ * including unban, and every change is appended to `statusHistory`.
+ */
+async function setGroupStatus(groupId, status, { remark, changedBy } = {}) {
+  if (!['active', 'banned', 'suspended'].includes(status)) {
+    throw createApprovalError('status must be active, banned or suspended');
   }
+  const trimmedRemark = remark == null ? '' : String(remark).trim();
+  if (!trimmedRemark) {
+    throw createApprovalError('remark is required for a status change');
+  }
+
   const group = await getGroupByGroupId(groupId);
   if (!group) {
     const err = new Error('Group not found');
     err.status = 404;
     throw err;
   }
+
+  const changedAt = new Date();
   group.status = status;
+  group.statusRemark = trimmedRemark;
+  group.statusUpdatedAt = changedAt;
+  group.statusUpdatedBy = changedBy ?? null;
+  group.statusHistory.push({
+    status,
+    remark: trimmedRemark,
+    changedBy: changedBy ?? null,
+    changedAt,
+  });
   await group.save();
+
+  logger.info({ groupId: group.groupId, status, changedBy: changedBy ?? null }, 'bot: group status changed');
   return group;
 }
 
@@ -240,5 +274,6 @@ module.exports = {
   creditGroup,
   adjustGroup,
   listGroups,
+  listTransactions,
   setGroupStatus,
 };

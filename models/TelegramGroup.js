@@ -25,10 +25,32 @@ const telegramGroupSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['active', 'banned'],
+      enum: ['active', 'banned', 'suspended'],
       default: 'active',
       index: true,
     },
+    // Latest moderation decision. `remark` is mandatory on every change (see
+    // setGroupStatus) and history keeps the full audit trail.
+    statusRemark: {
+      type: String,
+      default: '',
+    },
+    statusUpdatedAt: {
+      type: Date,
+      default: null,
+    },
+    statusUpdatedBy: {
+      type: Number,
+      default: null,
+    },
+    statusHistory: [
+      {
+        status: { type: String, enum: ['active', 'banned', 'suspended'] },
+        remark: { type: String, default: '' },
+        changedBy: { type: Number, default: null },
+        changedAt: { type: Date, default: Date.now },
+      },
+    ],
     // AUDIT ONLY - records who typed /reg. Never used to look up a wallet,
     // authorize a balance, join a query, or scope an aggregate.
     registeredBy: {

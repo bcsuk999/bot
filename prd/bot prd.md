@@ -87,7 +87,11 @@ Three new models. **None** touch `User`, `Payin`, or `Transaction` — the bot i
   title:                { type: String, default: '' },
   username:             { type: String, default: null },            // public @handle
   type:                 { type: String, enum: ['group','supergroup','private'], default: 'supergroup' },
-  status:               { type: String, enum: ['active','banned'], default: 'active', index },
+  status:               { type: String, enum: ['active','banned','suspended'], default: 'active', index },
+  statusRemark:         { type: String, default: '' },               // reason for the latest moderation change
+  statusUpdatedAt:      { type: Date, default: null },
+  statusUpdatedBy:      { type: Number, default: null },             // admin userid — AUDIT ONLY
+  statusHistory:        [{ status, remark, changedBy, changedAt }],  // full moderation audit trail
   registeredBy:         { type: Number, default: null },            // AUDIT ONLY — see §1.1
   registeredByUsername: { type: String, default: '' },              // AUDIT ONLY
   lastActiveAt:         { type: Date, default: null },
@@ -153,6 +157,8 @@ Indexes: unique `{ trnId: 1 }`, `{ group: 1, status: 1 }`, `{ group: 1, createdA
 
 All handlers live in `services/bot/handlers/`. Every command runs through the guard (§7) first. Group-scoped commands only work in group/supergroup chats.
 
+**Blocked groups.** A group whose `TelegramGroup.status` is `banned` or `suspended` is stopped before dispatch, for every command (including `/start` and `/reg`): the bot replies `This group is banned. Please contact support for further help.` or `This group is suspended. Please contact support for further help.` and sends nothing else. Moderation state is set only through the admin REST API (§10); settlement webhooks still process, so money already in flight is never lost when a group is blocked.
+
 **Command menus (`/`)** — on startup the bot calls `setMyCommands` for two scopes:
 
 | Scope | Commands shown |
@@ -176,7 +182,8 @@ So in any group, typing `/` lists only the member commands; a normal user is nev
 |---|---|
 | Chat id **not** in `TELEGRAM_ALLOWED_GROUP_IDS` (allowlist configured) | Reply `This chat is not authorised to use this bot.` + **owner alert** |
 | Already registered & active | Idempotent — return the same payload as first registration, with `alreadyRegistered: true` |
-| Banned | Reply `This group is blocked.` + **owner alert** |
+| Banned | Reply `This group is banned. Please contact support for further help.` + **owner alert** |
+| Suspended | Reply `This group is suspended. Please contact support for further help.` + **owner alert** |
 | Valid | Upsert `TelegramGroup` on `groupId` with `status: 'active'`, `title`, `username`; set `registeredBy` / `registeredByUsername` for audit |
 
 The `groupId` in the message is the sole key — `upsert` matches on `groupId` alone. A second `/reg` from the same group updates the title/username and nothing else; it never creates a second member.
@@ -333,7 +340,9 @@ Times are IST (`formatIst`). `failed`, `expired` and `reversed` orders show no `
 4. `allowlist.has(String(chat.id))` → **allow** (`reason: 'allowlisted_chat'`). Works for allowlisted groups before they run `/reg` — the allowlist is the authority; `/reg` is what creates the wallet.
 5. Otherwise → **deny** (`reason: 'chat_not_allowlisted'`, alert).
 
-Group-level commands (`/balance`, `/deposit`, `/daily`) additionally require a `TelegramGroup` row with `status: 'active'`; otherwise reply `This group is not registered. Run /reg first.` (no owner alert — that is a normal, expected state).
+Group-level commands (`/balance`, `/deposit`, `/daily`, `/status`) additionally require a `TelegramGroup` row with `status: 'active'`; otherwise reply `This group is not registered. Run /reg first.` (no owner alert — that is a normal, expected state).
+
+Moderation is checked before the command map: if the group exists with `status: 'banned'`, the reply is `This group is banned. Please contact support for further help.`; with `status: 'suspended'`, `This group is suspended. Please contact support for further help.` Both are sent once per message and skip the handler entirely, so a blocked group cannot create an order, read a balance, or query a status.
 
 ### 7.3 Owner alert
 
@@ -439,20 +448,44 @@ Always responds `200 { success: true }`.
 
 ## 10. REST API
 
-New router `routes/bot.js` mounted at `/api/bot` in `index.js`. Reuses existing `auth` + `requireAdmin` middleware and the `{ success: true, ... }` / `{ success: 'failed', msg }` envelope. Bot group ids go in the path, so Express 5 handles the negative-number string fine.
+New router `routes/bot.js` mounted at `/api/bot` in `index.js`. Reuses existing `auth` + `requireAdmin` middleware. Every endpoint keeps the project envelope `{ success, msg }`; failures are `{ success: 'failed', msg }`.
+
+List endpoints use one standard shape, so a panel can share pagination and filter code:
+
+```json
+{
+  "success": true,
+  "msg": "Bot groups fetched",
+  "data": [],
+  "meta": { "total": 0, "page": 1, "limit": 20, "totalPages": 0, "hasNextPage": false, "hasPrevPage": false },
+  "filters": { "groupId": "-100", "status": "active", "from": "2026-10-01", "to": "2026-10-31" }
+}
+```
+
+- `data` is an array for lists, an object for single resources.
+- `meta` is always present on lists (`total`, `page`, `limit`, `totalPages`, `hasNextPage`, `hasPrevPage`).
+- `filters` echoes only the filters actually applied.
+- `groupId`, `title`, `orderId`, `trnId` are **partial, case-insensitive** matches. `from`/`to` are inclusive; a date-only `to=2026-10-31` covers the whole day. Invalid dates or unknown enum values return `400`.
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/bot/groups` | List registered groups — `?status&page&limit` |
-| `GET` | `/api/bot/groups/:groupId` | Group detail + current balance + last 10 orders |
-| `PATCH` | `/api/bot/groups/:groupId/status` | `{ status: 'active' \| 'banned' }` |
+| `GET` | `/api/bot/groups` | List groups — `?groupId&title&status=active\|banned\|suspended&from&to&page&limit` |
+| `GET` | `/api/bot/groups/:groupId` | Group detail + balance + last 10 orders + `statusHistory` |
+| `PATCH` | `/api/bot/groups/:groupId/status` | `{ status: 'active' \| 'banned' \| 'suspended', remark }` — **remark required** |
+| `POST` | `/api/bot/groups/:groupId/ban` | `{ remark }` → `status: 'banned'` |
+| `POST` | `/api/bot/groups/:groupId/suspend` | `{ remark }` → `status: 'suspended'` |
+| `POST` | `/api/bot/groups/:groupId/unban` | `{ remark }` → `status: 'active'` |
 | `POST` | `/api/bot/groups/:groupId/adjust` | `{ amount, type: 'credit'\|'debit', remark }` → creates a `note: 'adjustment'` BotTransaction. Guards against negative resulting balance. |
-| `GET` | `/api/bot/orders` | List orders — `?groupId&status&from&to&page&limit` |
+| `GET` | `/api/bot/orders` | List orders — `?orderId&groupId&status&from&to&page&limit` |
 | `GET` | `/api/bot/orders/:orderId` | Order detail + its BotTransaction if credited |
 | `POST` | `/api/bot/orders/:orderId/approve` | Manually credit a stuck `pending` order (same atomic claim + credit path as the webhook) |
 | `POST` | `/api/bot/orders/:orderId/reject` | Mark `pending` → `failed` |
+| `GET` | `/api/bot/transactions` | List ledger rows — `?trnId&orderId&groupId&type&note&status&from&to&page&limit` |
+| `GET` | `/api/bot/transactions/:trnId` | One ledger row |
 | `GET` | `/api/bot/stats/:groupId` | `?window=today\|all` → same shape as `/daily` |
 | `GET` | `/api/bot/health` | Bot connected?, transport mode, registered group count (no auth — mirrors existing `/` health check) |
+
+Every status change (ban, suspend, unban) **requires a non-empty `remark`**; the API returns `400` without one. The change updates `status`, `statusRemark`, `statusUpdatedAt`, `statusUpdatedBy` and appends to `statusHistory`.
 
 All admin routes: `auth, requireAdmin`. Errors follow the existing pattern: `throw new Error(msg); err.status = 400;` in services, mapped in controllers.
 
@@ -466,6 +499,7 @@ models/BotTransaction.js
 services/bot/config.js          env parsing + allowlist Set + validation
 services/bot/client.js          node-telegram-bot-api instance, start/stop
 services/bot/guard.js           resolveAuthority() + alertOwner()
+services/bot/query.js           admin list filters, date range, pagination meta
 services/bot/commands.js        message dispatcher
 services/bot/upilink.js         parseUpiLink()
 services/bot/handlers/reg.js
@@ -475,7 +509,8 @@ services/bot/handlers/status.js
 services/bot/handlers/daily.js
 services/bot/stats.js           getGroupStats() aggregation
 
-services/botGroupService.js     getGroupBalance, creditGroup, adjustGroup, registerGroup
+services/botGroupService.js     getGroupBalance, creditGroup, adjustGroup, registerGroup,
+                               listGroups, listTransactions, setGroupStatus
                                (mirrors services/payinService.js placement)
 
 controllers/botController.js         REST API
@@ -511,6 +546,8 @@ process.on('SIGINT', stopBot);
 - Owner alerts include user-supplied names/usernames — escape HTML for `parse_mode: 'HTML'` (`& < >`) before interpolating `title`/`username`/`firstName`.
 - All admin REST routes behind existing JWT + `requireAdmin`.
 - Balance adjustments are ledger rows with `createdBy` + mandatory `remark`; balance can never go negative (service-level check).
+- Every moderation change (ban, suspend, unban) requires a non-empty `remark` and records `statusUpdatedBy` + a `statusHistory` entry, so who blocked a group and why is always auditable.
+- List filters build Mongo queries from a whitelist (`services/bot/query.js`): free text is regex-escaped and matched with `$options: 'i'`, enum values are validated against a fixed list, and date bounds are parsed and range-checked before they reach the query. Raw query objects are never passed through.
 
 ## 14. Testing
 
@@ -518,7 +555,9 @@ Vitest, matching the existing pure-unit convention (`tests/*.test.js`, ESM `impo
 
 - `tests/upilink.test.js` — full UPI URI, missing `am`, missing `pa`, malformed VPA, non-`upi` scheme, empty string
 - `tests/botAmount.test.js` — below min, above max, exact bounds, `NaN`, zero, negative, `"400.50"` string, `"1,000"` rejection
-- `tests/botGuard.test.js` — allowlisted group, owner in DM, owner in non-allowlisted group, private DM from stranger, public group not in allowlist, empty allowlist (open to any group), malformed allowlist env
+- `tests/botGuard.test.js` — allowlisted group, owner in DM, owner in non-allowlisted group, private DM from stranger, public group not in allowlist, empty allowlist (open to any group), malformed allowlist env, and the exact banned/suspended denial messages
+- `tests/botQuery.test.js` — group/order/transaction filters, regex escaping, enum validation, inclusive date range (`to` date-only covers the whole day), reversed-range rejection, pagination `meta`, filter echo
+- `tests/botMenu.test.js` — `/` command menu scopes and group help omitting `/reg`
 - `tests/botStatus.test.js` — `/status` slip for pending/success/failed, `Success on` only for success, `paidAt` → `updatedAt` fallback, missing order
 - `tests/botStats.test.js` — `startOfIstDay` across UTC/IST midnight boundaries, leap/month/year boundaries, all-time bucket
 - `tests/botFormat.test.js` — `Intl.NumberFormat('en-IN')` currency output, stats block rendering
@@ -551,6 +590,9 @@ The webhook signature path is still only manually verified — recommend a real 
 17. Alert de-dupe → 10 `/reg` attempts from the same non-allowlisted group within 5 minutes produce exactly 1 owner DM.
 18. Identity is group-only: after `/reg`, mutating `registeredBy` to a different Telegram user id changes no balance, no order, no stat, and no permission. `grep` the bot source for `userid` and confirm it appears only in comments and in the unrelated admin-JWT path.
 19. `/status <order id>` → reply shows order id, amount, status and created time; a credited order also shows `Success on`; an unknown id, or an id belonging to another group, replies `Order not found in this group.`
+20. `GET /api/bot/groups?groupId=-100&from=2026-10-01&to=2026-10-31` → only matching groups, `meta` with `total/page/limit/totalPages/hasNextPage/hasPrevPage`, and `filters` echoing the applied subset. An invalid date or unknown `status` → 400.
+21. `POST /api/bot/groups/:groupId/ban` (or `/suspend`, `/unban`) without `remark` → 400 and no change; with a remark → `status` updated, `statusRemark`/`statusUpdatedAt`/`statusUpdatedBy` set, a `statusHistory` entry appended, and the group's very next bot message is the support-contact denial.
+22. `GET /api/bot/transactions?orderId=…&groupId=…&from=…&to=…` → only matching ledger rows, same `{ success, msg, data, meta, filters }` envelope as `/groups`; `/transactions/:trnId` returns one row or 404.
 
 ## 16. Open Questions
 
