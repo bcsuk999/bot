@@ -1,7 +1,7 @@
 const BotOrder = require('../models/BotOrder');
 const BotTransaction = require('../models/BotTransaction');
 const botGroupService = require('../services/botGroupService');
-const { claimOrder, settleSuccess } = require('./botWebhookController');
+const { claimOrder, settleSuccess, notifySuccess } = require('./botWebhookController');
 const { getGroupStats, getGroupOrderCounts } = require('../services/bot/stats');
 const {
   buildGroupFilter,
@@ -368,6 +368,8 @@ exports.approveOrder = async (req, res) => {
     if (settled.action !== 'credited') {
       return res.status(409).json({ success: 'failed', msg: 'Order was already settled' });
     }
+
+    await notifySuccess(settled.order, settled.credited, settled.balance);
 
     return res.status(201).json({
       success: true,

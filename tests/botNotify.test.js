@@ -4,15 +4,16 @@ import { buildSuccessNotice, buildFailedNotice } from '../controllers/botWebhook
 const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
 
 describe('buildSuccessNotice', () => {
-  it('shows only order id, amount and balance', () => {
+  it('shows a success checkmark, order id, amount and balance', () => {
     const text = buildSuccessNotice({ orderId: 'B20260928093925967924200', amount: 400, balance: 12900 });
     expect(text).toBe(
-      ['Deposit successful', '', 'Order ID: B20260928093925967924200', 'Amount: ₹400.00', 'Balance: ₹12,900.00'].join('\n')
+      ['✅ Deposit successful', '', 'Order ID: B20260928093925967924200', 'Amount: ₹400.00', 'Balance: ₹12,900.00'].join('\n')
     );
   });
 
-  it('uses no emoji', () => {
-    expect(buildSuccessNotice({ orderId: 'B1', amount: 400, balance: 400 })).not.toMatch(EMOJI);
+  it('uses the green checkmark as its only emoji', () => {
+    const text = buildSuccessNotice({ orderId: 'B1', amount: 400, balance: 400 });
+    expect(text.match(new RegExp(EMOJI, 'gu'))).toEqual(['✅']);
   });
 });
 

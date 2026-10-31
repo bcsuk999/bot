@@ -35,11 +35,11 @@ async function notifyGroup(groupId, text) {
   }
 }
 
-// Group notifications: plain text, no emoji, no "Credited" line (credited always
+// Group notifications: plain text, a success checkmark, and no "Credited" line (credited always
 // equals the order face value). Same payment-slip style as the /deposit reply.
 function buildSuccessNotice({ orderId, amount, balance }) {
   return [
-    'Deposit successful',
+    '✅ Deposit successful',
     '',
     `Order ID: ${orderId}`,
     `Amount: ${formatInr(amount)}`,
@@ -204,6 +204,7 @@ module.exports = {
   settleSuccess,
   buildSuccessNotice,
   buildFailedNotice,
+  notifySuccess,
   SUCCESS_STATUSES,
   FAILED_STATUSES,
   EXPIRED_STATUSES,
