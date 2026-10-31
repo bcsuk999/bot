@@ -280,6 +280,10 @@ exports.adminCreatePayout = async (req, res) => {
       }
     }
 
+    if (!bank.accountNumber || !bank.ifsc) {
+      return res.status(400).json({ success: 'failed', msg: 'Bank account missing account number or IFSC' });
+    }
+
     const currentBalance = await getCurrentBalance(user._id);
     if (currentBalance < parsedAmount) {
       return res.status(400).json({

@@ -6,11 +6,11 @@ const DENY = {
   DM_NOT_ALLOWED: 'This bot is for authorised groups only.',
   BANNED: 'This group is banned. Please contact support for further help.',
   SUSPENDED: 'This group is suspended. Please contact support for further help.',
+  INACTIVE: 'This group is not active. Please contact support for further help.',
   NOT_REGISTERED: 'This group is not registered yet. Run /reg first.',
 };
 
-// Simple TTL set for alert de-duplication: a spamming group must not flood the
-// owner's DM. key -> timestamp
+// Simple TTL set for alert de-duplication. key -> timestamp
 const alertSeen = new Map();
 
 function shouldAlert(key, ttlMs, now = Date.now()) {
@@ -31,23 +31,29 @@ function resetAlertCache() {
   alertSeen.clear();
 }
 
+function isOwner(from = {}, config = {}) {
+  return Boolean(
+    config.ownerId &&
+    from.id != null &&
+    Number(from.id) === Number(config.ownerId)
+  );
+}
+
 /**
  * Decide whether a chat may run bot commands.
  *
- * Order: owner bypass -> private chat deny -> allowlist -> deny.
- * The allowlist is the authority; /reg is what creates the wallet. It is
- * optional: when no ids/usernames are configured every group is allowed and
- * only private DMs are refused.
+ * Private chats are owner-only. Group membership is authorized later by the
+ * registered TelegramGroup record, keyed by chat id, not by an env allowlist
+ * or the individual sender's Telegram id.
  *
  * @param {object} ctx  { from, chat, command }
  * @param {object} config
  * @returns {{ allowed: boolean, reason: string, alert: boolean }}
  */
 function resolveAuthority(ctx = {}, config = {}) {
-  const { from = {}, chat = {}, command = '' } = ctx;
-  const ownerId = config.ownerId;
+  const { from = {}, chat = {} } = ctx;
 
-  if (ownerId && from.id != null && Number(from.id) === Number(ownerId)) {
+  if (isOwner(from, config)) {
     return { allowed: true, reason: 'owner', alert: false };
   }
 
@@ -56,20 +62,7 @@ function resolveAuthority(ctx = {}, config = {}) {
     return { allowed: false, reason: 'dm_not_allowed', alert: true };
   }
 
-  const allowlistEmpty =
-    (!(config.allowedGroupIds instanceof Set) || config.allowedGroupIds.size === 0) &&
-    (!(config.allowedGroupUsernames instanceof Set) || config.allowedGroupUsernames.size === 0);
-
-  // No allowlist configured: the bot is open to every group.
-  if (allowlistEmpty) {
-    return { allowed: true, reason: 'open_allowlist', alert: false };
-  }
-
-  if (chat.id != null && config.allowedGroupIds instanceof Set && config.allowedGroupIds.has(String(chat.id))) {
-    return { allowed: true, reason: 'allowlisted_chat', alert: false };
-  }
-
-  return { allowed: false, reason: 'chat_not_allowlisted', alert: true };
+  return { allowed: true, reason: 'group_chat', alert: false };
 }
 
 /**
@@ -125,4 +118,4 @@ async function enforce(ctx = {}, config = {}, client = null) {
   return decision;
 }
 
-module.exports = { DENY, resolveAuthority, alertOwner, enforce, shouldAlert, pruneAlertCache, resetAlertCache };
+module.exports = { DENY, isOwner, resolveAuthority, alertOwner, enforce, shouldAlert, pruneAlertCache, resetAlertCache };

@@ -129,20 +129,23 @@ exports.getTransactions = async (req, res) => {
       Transaction.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean({ getters: true }),
       Transaction.countDocuments(filter),
     ]);
-    const transactions = txnsRaw.map((t) => ({
-      trnId: t.trnId,
-      currency: t.currency,
-      amount: toNum(t.amount),
-      type: t.type,
-      note: t.note,
-      remark: t.remark,
-      balanceAfter: toNum(t.balanceAfter),
-      status: t.status,
-      exchangeRate: toNum(t.exchangeRate),
-      creditedAmount: toNum(t.creditedAmount),
-      createdAt: t.createdAt,
-      updatedAt: t.updatedAt,
-    }));
+    const transactions = txnsRaw.map((t) => {
+      const row = {
+        trnId: t.trnId,
+        currency: t.currency,
+        amount: toNum(t.amount),
+        type: t.type,
+        note: t.note,
+        remark: t.remark,
+        balanceAfter: toNum(t.balanceAfter),
+        status: t.status,
+        creditedAmount: toNum(t.creditedAmount),
+        createdAt: t.createdAt,
+        updatedAt: t.updatedAt,
+      };
+      if (t.currency === 'USDT') row.exchangeRate = toNum(t.exchangeRate);
+      return row;
+    });
     return res.json({ success: true, msg: 'Transactions fetched', count, page: pageNum, limit: limitNum, totalPages: Math.ceil(count / limitNum), transactions });
   } catch (err) {
     return res.status(500).json({ success: 'failed', msg: 'Failed to fetch transactions' });

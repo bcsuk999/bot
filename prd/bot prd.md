@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-A Telegram bot that treats each Telegram **group as a wallet/member**. A group (optionally restricted by an env allowlist) registers itself with `/reg`, receives deposits via `/deposit` using the existing SimplyPay INR deep link, and can query its balance and deposit statistics.
+A Telegram bot that treats each Telegram **group as a wallet/member**. The bot owner registers a group with `/reg`; any member of an active registered group can create deposits via `/deposit` using the existing SimplyPay INR deep link and query that group's balance and deposit statistics.
 
 ### 1.1 The identity rule
 
@@ -22,12 +22,12 @@ A Telegram bot that treats each Telegram **group as a wallet/member**. A group (
 
 | # | Goal |
 |---|---|
-| G1 | Groups self-register via `/reg` and immediately receive a group id + balance |
+| G1 | The bot owner registers a group via `/reg`, which immediately receives a group id + balance |
 | G2 | Any member of a registered group can read that group's balance via `/balance` |
 | G3 | Any member can create a deposit via `/deposit <amount>` and get a UPI id + amount back from the SimplyPay deep link |
 | G4 | Per-group daily stats (`/daily`): that group's total orders, total amount, success, pending, failed — today (IST) as the headline, all-time as context |
 | G5 | Any member can check one order with `/status <order id>`: order id, amount, status, created time, and the success time once credited |
-| G6 | Any command attempt from a chat outside a configured allowlist (or any private DM from a stranger) is denied and the owner is DM'd the offending chat id, user id, and command |
+| G6 | Group commands are available to any member of that registered, active group and always operate on that group's data; private DMs from strangers are denied |
 | G7 | A REST API to inspect groups, orders, stats, and manually adjust balances |
 
 ## 3. Non-Goals
@@ -49,8 +49,7 @@ TELEGRAM_BOT_TOKEN=<paste-token-from-@BotFather>   # never commit a real token
 TELEGRAM_OWNER_ID=<owner-numeric-telegram-user-id>
 TELEGRAM_BOT_USERNAME=subnpay_bot          # optional, for deep links
 
-# Authority allowlist — optional, comma-separated group ids permitted to /reg.
-# Leave empty to let any group use the bot (private DMs are still refused).
+# Legacy setting; group access is determined by registration and active status.
 TELEGRAM_ALLOWED_GROUP_IDS=
 
 # Deposit limits (INR)
@@ -73,7 +72,7 @@ SIMPLYPAY_EXPIRED_STATUSES=
 
 Boot behaviour: if `BOT_ENABLED !== 'true'`, the bot does not start. If `TELEGRAM_BOT_TOKEN` or `TELEGRAM_OWNER_ID` is missing while enabled, log a fatal error and refuse to start (fail loud, not silent). `SIMPLYPAY_BOT_NOTIFY_URL` is also required while enabled and must point at `/webhook/simplypay/bot` — it deliberately does **not** fall back to `SIMPLYPAY_NOTIFY_URL`, because that path is served by `simplypayController`, which looks up `Payin` by `payinId`, finds nothing, and silently discards the payment.
 
-In `webhook` mode Telegram POSTs updates to `/bot/telegram/:secret`; the secret is compared before the update reaches the bot, since an open update endpoint would let anyone POST forged updates and run `/reg` or `/deposit` as any chat.
+In `webhook` mode Telegram POSTs updates to `/bot/telegram/:secret`; the secret is compared before the update reaches the bot, since an open update endpoint would let anyone POST forged updates and run commands as any chat.
 
 ## 5. Data Models
 
@@ -160,7 +159,7 @@ Indexes: unique `{ trnId: 1 }`, `{ group: 1, status: 1 }`, `{ group: 1, createdA
 
 All handlers live in `services/bot/handlers/`. Every command runs through the guard (§7) first. Group-scoped commands only work in group/supergroup chats.
 
-**Blocked groups.** A group whose `TelegramGroup.status` is `banned` or `suspended` is stopped before dispatch, for every command (including `/start` and `/reg`): the bot replies `This group is banned. Please contact support for further help.` or `This group is suspended. Please contact support for further help.` and sends nothing else. Moderation state is set only through the admin REST API (§10); settlement webhooks still process, so money already in flight is never lost when a group is blocked.
+**Blocked groups.** A group whose `TelegramGroup.status` is `banned` or `suspended` cannot run group-scoped commands. The bot replies with the corresponding support-contact message. `/reg` is owner-only and cannot reactivate a blocked group; moderation state is set only through the admin REST API (§10). Settlement webhooks still process, so money already in flight is never lost when a group is blocked.
 
 **Command menus (`/`)** — on startup the bot calls `setMyCommands` for two scopes:
 
@@ -169,22 +168,21 @@ All handlers live in `services/bot/handlers/`. Every command runs through the gu
 | `all_group_chats` | `/start`, `/balance`, `/deposit`, `/status`, `/daily` — **`/reg` is not listed** |
 | `chat` = `TELEGRAM_OWNER_ID` | `/start`, `/reg` |
 
-So in any group, typing `/` lists only the member commands; a normal user is never shown that registration exists. `/reg` appears only in the owner's private chat, where it replies `Run /reg inside the group you want to register.` — the wallet belongs to a group, not to a person. The group help block likewise omits `/reg`; only the owner's DM help includes it. `setMyCommands` is best-effort: a failure (e.g. the owner has never started the bot, so the chat does not exist yet) is logged and never blocks startup, and re-publishing runs on the next restart.
+So in any group, typing `/` lists only the member commands; a normal user is never shown that registration exists. `/reg` appears only in the owner's private chat, where it replies `Run /reg inside the group you want to register.` The owner must then run `/reg` in the target group; other members cannot register groups. The group help block likewise omits `/reg`; only the owner's DM help includes it. `setMyCommands` is best-effort: a failure (e.g. the owner has never started the bot, so the chat does not exist yet) is logged and never blocks startup, and re-publishing runs on the next restart.
 
 ### 6.1 `/start` — onboarding
 
 - Unregistered → `This group is authorised. Run /reg to create its wallet.`
-- Outside the allowlist (only when one is configured) → denied + owner alert
 - Registered → group id, balance, and the command list
 
 ### 6.2 `/reg` — create the member (the group)
 
-`/reg` is member creation. The row it writes is the member, keyed on `groupId`. There is no `userid` and no `User` document involved.
+`/reg` is owner-only member creation. The owner must run it inside the target group. The row it writes is the member, keyed on `groupId`; there is no `userid` and no `User` document involved. The owner's Telegram ID authorizes registration only; it does not own the group's wallet.
 
 | Case | Behaviour |
 |---|---|
-| Chat id **not** in `TELEGRAM_ALLOWED_GROUP_IDS` (allowlist configured) | Reply `This chat is not authorised to use this bot.` + **owner alert** |
-| Already registered & active | Idempotent — return the same payload as first registration, with `alreadyRegistered: true` |
+| Sender is not `TELEGRAM_OWNER_ID` | Deny with `Only the bot owner can register a group.` |
+| Already registered & active (owner runs `/reg`) | Idempotent — return the same payload as first registration, with `alreadyRegistered: true` |
 | Banned | Reply `This group is banned. Please contact support for further help.` + **owner alert** |
 | Suspended | Reply `This group is suspended. Please contact support for further help.` + **owner alert** |
 | Valid | Upsert `TelegramGroup` on `groupId` with `status: 'active'`, a generated 5-digit `uid`, `title`, `username`; set `registeredBy` / `registeredByUsername` for audit |
@@ -330,25 +328,19 @@ Times are IST (`formatIst`). `failed`, `expired` and `reversed` orders show no `
 
 ## 7. Authority Model & Owner Alerting
 
-### 7.1 Allowlist parsing
-
-`TELEGRAM_ALLOWED_GROUP_IDS` is optional. It is comma-separated, trimmed, empty entries dropped. Parsed once at boot into a `Set<string>`. Support `-100…` and `@username` (resolved to an id via `getChat` on first use, then cached). Invalid entries log a warning at boot and are dropped. When the list is empty the bot is open: every group is allowed and only private DMs are refused. An empty allowlist is **not** a startup error.
-
-### 7.2 Guard decision order
+### 7.1 Guard decision order
 
 `resolveAuthority(ctx)` in `services/bot/guard.js` returns `{ allowed, reason, alert }`:
 
-1. `from.id === TELEGRAM_OWNER_ID` → **allow** (`reason: 'owner'`). Owner bypasses the allowlist in DMs and groups.
-2. `chat.type === 'private'` → **deny** (`reason: 'dm_not_allowed'`, alert).
-3. Allowlist empty (no ids and no usernames) → **allow** (`reason: 'open_allowlist'`). Every group may use the bot.
-4. `allowlist.has(String(chat.id))` → **allow** (`reason: 'allowlisted_chat'`). Works for allowlisted groups before they run `/reg` — the allowlist is the authority; `/reg` is what creates the wallet.
-5. Otherwise → **deny** (`reason: 'chat_not_allowlisted'`, alert).
+1. `from.id === TELEGRAM_OWNER_ID` → **allow** (`reason: 'owner'`), including private chat.
+2. A non-owner private chat → **deny** (`reason: 'dm_not_allowed'`, alert).
+3. Group chats proceed to command routing. `/reg` registers the group; group commands look up the record by Telegram `chat.id`, require it to exist and have `status: 'active'`, and use that record for all reads and writes. The sender's user id and `TELEGRAM_ALLOWED_GROUP_IDS` do not authorize or deny group commands.
 
-Group-level commands (`/balance`, `/deposit`, `/daily`, `/status`) additionally require a `TelegramGroup` row with `status: 'active'`; otherwise reply `This group is not registered. Run /reg first.` (no owner alert — that is a normal, expected state).
+An unregistered group receives `This group is not registered yet. Run /reg first.` for group-level commands. Banned or suspended groups receive the corresponding support-contact denial. These expected group-level denials do not generate an unauthorized-access alert.
 
-Moderation is checked before the command map: if the group exists with `status: 'banned'`, the reply is `This group is banned. Please contact support for further help.`; with `status: 'suspended'`, `This group is suspended. Please contact support for further help.` Both are sent once per message and skip the handler entirely, so a blocked group cannot create an order, read a balance, or query a status.
+Moderation is checked before dispatch: any existing group whose status is not `active` skips the handler, so it cannot create an order, read a balance, or query a status.
 
-### 7.3 Owner alert
+### 7.2 Owner alert
 
 Sent via `bot.sendMessage(TELEGRAM_OWNER_ID, ...)` with `parse_mode: 'HTML'`:
 
@@ -363,17 +355,17 @@ User ID: 5551234567
 Username: @someone
 First name: Some
 Command: /deposit 500
-Reason: chat_not_allowlisted
+Reason: dm_not_allowed
 Time (IST): 2026-09-28 10:15:00
 ```
 
-The offending chat id and user id are both reported, as requested. Sent once per violating message.
+The offending chat id and user id are both reported. Sent once per unauthorized private-DM attempt.
 
 **Dedupe:** a key of `chatId|userId|command` is cached for `BOT_ALERT_DEDUPE_MS` (default 5 min) to stop a spamming group from flooding the owner's DM. Suppressed attempts are counted and logged at `warn`. Alerts are best-effort — a failed alert DM is logged, never thrown into the command path.
 
-### 7.4 Command routing
+### 7.3 Command routing
 
-`node-telegram-bot-api` `on('message')`. Parse the command token and args, dispatch to a handler map. Unknown commands reply with a help block. Non-command messages are ignored in groups (avoids noise); in an allowlisted DM the owner gets a help hint.
+`node-telegram-bot-api` `on('message')`. Parse the command token and args, dispatch to a handler map. Unknown commands reply with a help block. Non-command messages are ignored in groups (avoids noise); the owner gets a help hint in their DM.
 
 ## 8. UPI Deep Link Handling
 
@@ -513,7 +505,7 @@ models/TelegramGroup.js
 models/BotOrder.js
 models/BotTransaction.js
 
-services/bot/config.js          env parsing + allowlist Set + validation
+services/bot/config.js          env parsing + legacy allowlist compatibility + validation
 services/bot/client.js          node-telegram-bot-api instance, start/stop
 services/bot/guard.js           resolveAuthority() + alertOwner()
 services/bot/query.js           admin list filters, date range, pagination meta
@@ -574,7 +566,8 @@ Vitest, matching the existing pure-unit convention (`tests/*.test.js`, ESM `impo
 
 - `tests/upilink.test.js` — full UPI URI, missing `am`, missing `pa`, malformed VPA, non-`upi` scheme, empty string
 - `tests/botAmount.test.js` — below min, above max, exact bounds, `NaN`, zero, negative, `"400.50"` string, `"1,000"` rejection
-- `tests/botGuard.test.js` — allowlisted group, owner in DM, owner in non-allowlisted group, private DM from stranger, public group not in allowlist, empty allowlist (open to any group), malformed allowlist env, and the exact banned/suspended denial messages
+- `tests/botGuard.test.js` — group chats proceed regardless of the legacy allowlist, owner in DM/group, private DM from stranger, malformed legacy allowlist env, and the exact banned/suspended denial messages
+- `tests/botCommands.test.js` — registration required for group commands; active groups are allowed and banned, suspended, or invalid statuses are denied
 - `tests/botQuery.test.js` — group/order/transaction filters, regex escaping, enum validation, inclusive date range (`to` date-only covers the whole day), reversed-range rejection, pagination `meta`, filter echo, keyset cursor round-trip/malformed input/AND-composition
 - `tests/botUid.test.js` — 5-digit uid validation, generation bounds, exact group filter, malformed uid → `400`, and `uid` staying out of the transaction Mongo filter (resolved in the controller)
 - `tests/botMenu.test.js` — `/` command menu scopes and group help omitting `/reg`
@@ -593,8 +586,8 @@ The webhook signature path is still only manually verified — recommend a real 
 
 1. Boot with `BOT_ENABLED=true` and a valid token → `bot connected` logged; `/api/bot/health` reports connected.
 2. A group runs `/reg` → reply contains the group id, title, `₹0.00` balance, and the command list; a `TelegramGroup` row exists with `status: 'active'`.
-3. `/reg` again on the same group → same payload plus `alreadyRegistered: true`; no duplicate row.
-4. With an allowlist configured, a group **not** in it runs `/reg` → denied message, and the owner receives a DM containing that group id, the user id, and the command. With no allowlist configured, any group may register.
+3. Only the configured owner can run `/reg` in a group; a non-owner is denied. Owner `/reg` again on the same active group returns the same payload plus `alreadyRegistered: true`; no duplicate row.
+4. The owner can run `/reg` regardless of `TELEGRAM_ALLOWED_GROUP_IDS`; that legacy setting does not restrict registration or group commands.
 5. A stranger DMs `/balance` → denied, owner alerted with their user id.
 6. Registered group runs `/balance` → returns the group's ledger balance.
 7. `/deposit 400` → order row `pending`; reply shows the UPI id, the amount, and a working **Pay now** button pointing at the gateway deep link (or payment link when no `upi://` link is returned).
@@ -607,7 +600,7 @@ The webhook signature path is still only manually verified — recommend a real 
 14. A `₹400` deposit credits exactly `₹400` even when an active `BonusConfig` would grant a bonus — no bonus leg in the ledger, and no `Commission` record is created for the group.
 15. `GET /api/bot/stats/:groupId?window=all` without a JWT → 401; with an admin JWT → 200 matching the Telegram numbers.
 16. `POST /api/bot/groups/:groupId/adjust` with a debit exceeding balance → 400, no ledger row, balance unchanged.
-17. Alert de-dupe → 10 `/reg` attempts from the same non-allowlisted group within 5 minutes produce exactly 1 owner DM.
+17. Alert de-dupe → repeated unauthorized private-DM attempts from the same user within 5 minutes produce exactly 1 owner DM.
 18. Identity is group-only: after `/reg`, mutating `registeredBy` to a different Telegram user id changes no balance, no order, no stat, and no permission. `grep` the bot source for `userid` and confirm it appears only in comments and in the unrelated admin-JWT path.
 19. `/status <order id>` → reply shows order id, amount, status and created time; a credited order also shows `Success on`; an unknown id, or an id belonging to another group, replies `Order not found in this group.`
 20. `GET /api/bot/groups?groupId=-100&from=2026-10-01&to=2026-10-31` → only matching groups, `meta` with `total/page/limit/totalPages/hasNextPage/hasPrevPage`, and `filters` echoing the applied subset. An invalid date or unknown `status` → 400.

@@ -14,7 +14,7 @@ function toNum(v) {
 }
 
 function serializeTransaction(t) {
-  return {
+  const row = {
     trnId: t.trnId,
     userid: t.userid,
     user: t.user,
@@ -24,7 +24,6 @@ function serializeTransaction(t) {
     remark: t.remark,
     balanceAfter: toNum(t.balanceAfter),
     status: t.status,
-    exchangeRate: toNum(t.exchangeRate),
     creditedAmount: toNum(t.creditedAmount),
     referenceId: t.referenceId,
     network: t.network,
@@ -33,6 +32,8 @@ function serializeTransaction(t) {
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
   };
+  if (t.currency !== 'INR') row.exchangeRate = toNum(t.exchangeRate);
+  return row;
 }
 
 function getPagination(page = 1, limit = 20, maxLimit = 100) {

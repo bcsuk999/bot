@@ -186,12 +186,12 @@ describe('resolveAuthority', () => {
     expect(r.reason).toBe('owner');
   });
 
-  it('allows an allowlisted group', () => {
+  it('allows a group chat to be checked against its registered group record', () => {
     const r = resolveAuthority(
       { from: { id: 111 }, chat: { id: ALLOWED_GROUP, type: 'supergroup' }, command: '/reg' },
       config
     );
-    expect(r).toEqual({ allowed: true, reason: 'allowlisted_chat', alert: false });
+    expect(r).toEqual({ allowed: true, reason: 'group_chat', alert: false });
   });
 
   it('denies a private DM from a stranger and requests an alert', () => {
@@ -204,20 +204,18 @@ describe('resolveAuthority', () => {
     expect(r.alert).toBe(true);
   });
 
-  it('denies a non-allowlisted group and requests an alert', () => {
+  it('does not reject a group because it is absent from the legacy allowlist', () => {
     const r = resolveAuthority(
       { from: { id: 111 }, chat: { id: -1009998887776, type: 'supergroup' }, command: '/deposit 500' },
       config
     );
-    expect(r.allowed).toBe(false);
-    expect(r.reason).toBe('chat_not_allowlisted');
-    expect(r.alert).toBe(true);
+    expect(r).toEqual({ allowed: true, reason: 'group_chat', alert: false });
   });
 
-  it('allows any group when the allowlist is empty', () => {
+  it('allows group chat authorization to proceed when the legacy allowlist is empty', () => {
     const empty = makeConfig({ TELEGRAM_ALLOWED_GROUP_IDS: '' });
     const r = resolveAuthority({ from: { id: 1 }, chat: { id: -1001, type: 'supergroup' } }, empty);
-    expect(r).toEqual({ allowed: true, reason: 'open_allowlist', alert: false });
+    expect(r).toEqual({ allowed: true, reason: 'group_chat', alert: false });
   });
 
   it('still denies a private DM when the allowlist is empty', () => {
@@ -226,10 +224,9 @@ describe('resolveAuthority', () => {
     expect(r).toEqual({ allowed: false, reason: 'dm_not_allowed', alert: true });
   });
 
-  it('denies a plain (non-super) group that is not allowlisted', () => {
+  it('allows a plain group chat to be checked against its registered group record', () => {
     const r = resolveAuthority({ from: { id: 1 }, chat: { id: -500, type: 'group' } }, config);
-    expect(r.allowed).toBe(false);
-    expect(r.alert).toBe(true);
+    expect(r).toEqual({ allowed: true, reason: 'group_chat', alert: false });
   });
 });
 

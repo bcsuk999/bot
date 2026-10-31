@@ -1,5 +1,5 @@
 const botGroupService = require('../botGroupService');
-const { enforce, DENY } = require('./guard');
+const { enforce, DENY, isOwner } = require('./guard');
 const { helpText } = require('./handlers/help');
 const { cmdReg } = require('./handlers/reg');
 const { cmdBalance } = require('./handlers/balance');
@@ -9,9 +9,10 @@ const { cmdStatus } = require('./handlers/status');
 const { cmdStart } = require('./handlers/start');
 const logger = require('../../utils/logger');
 
-// Commands that need an active member (a registered, non-banned group).
+// Commands that need a registered group with active status.
 const GROUP_COMMANDS = new Set(['/balance', '/deposit', '/daily', '/status']);
 const ALL_COMMANDS = new Set(['/start', '/reg', '/balance', '/deposit', '/daily', '/status']);
+const REG_OWNER_ONLY = 'Only the bot owner can register a group. Ask the owner to run /reg here.';
 
 // The "/" menus Telegram renders per chat scope (Bot API setMyCommands).
 // /reg is absent from the group menu on purpose: a normal group member must not
@@ -23,6 +24,18 @@ const GROUP_MENU = [
   { command: 'status', description: 'Check a deposit: /status <order id>' },
   { command: 'daily', description: 'Show this group deposit statistics' },
 ];
+
+function getGroupAccessDenial(command, group) {
+  if (GROUP_COMMANDS.has(command) && !group) return DENY.NOT_REGISTERED;
+  if (!group || group.status === 'active') return null;
+  if (group.status === 'banned') return DENY.BANNED;
+  if (group.status === 'suspended') return DENY.SUSPENDED;
+  return DENY.INACTIVE;
+}
+
+function getRegistrationDenial(from, config) {
+  return isOwner(from, config) ? null : REG_OWNER_ONLY;
+}
 
 const OWNER_MENU = [
   { command: 'start', description: 'Show bot info and command list' },
@@ -82,7 +95,7 @@ async function handleMessage(msg, client, config) {
   const command = parsed?.command || '';
   const ctx = { chat, from, args: parsed?.args || [], command, client, config };
 
-  // 1. Authority - deny + owner alert for unauthorised chats.
+  // 1. Restrict private chats and alert the owner when needed.
   const decision = await enforce(ctx, config, client);
   if (!decision.allowed) {
     const text = decision.reason === 'dm_not_allowed' ? DENY.DM_NOT_ALLOWED : DENY.NOT_AUTHORISED;
@@ -114,19 +127,17 @@ async function handleMessage(msg, client, config) {
     return client.sendMessage(chat.id, 'Group commands must be run inside an authorised group.');
   }
 
-  // 4. Member lookup. The group is the member; groupId is the only identity.
+  if (command === '/reg') {
+    const registrationDenial = getRegistrationDenial(from, config);
+    if (registrationDenial) return client.sendMessage(chat.id, registrationDenial);
+  }
+
+  // 4. The group is the member; groupId is the only identity. Every group
+  // command is scoped to this record, regardless of which member sent it.
   let group = await botGroupService.getGroupByGroupId(chat.id);
   const isRegistered = !!group;
-
-  if (GROUP_COMMANDS.has(command) && !isRegistered) {
-    return client.sendMessage(chat.id, DENY.NOT_REGISTERED);
-  }
-  if (group && group.status === 'banned') {
-    return client.sendMessage(chat.id, DENY.BANNED);
-  }
-  if (group && group.status === 'suspended') {
-    return client.sendMessage(chat.id, DENY.SUSPENDED);
-  }
+  const groupAccessDenial = getGroupAccessDenial(command, group);
+  if (groupAccessDenial) return client.sendMessage(chat.id, groupAccessDenial);
 
   ctx.group = group;
   ctx.isRegistered = isRegistered;
@@ -187,4 +198,6 @@ module.exports = {
   OWNER_MENU,
   GROUP_COMMANDS,
   ALL_COMMANDS,
+  getGroupAccessDenial,
+  getRegistrationDenial,
 };
