@@ -118,6 +118,9 @@ Indexes: unique `{ groupId: 1 }`, unique sparse `{ uid: 1 }`, `{ status: 1 }`, `
   network:              { type: String, default: 'SPAY' },
   status:               { type: String, enum: ['pending','success','failed','expired','reversed'],
                           default: 'pending', index },
+  direction:            { type: String, enum: ['credit','debit'], default: 'credit' },
+                          // debit = manual withdrawal adjustment only; deposit
+                          // stats filter on it so money out never counts as a deposit
   upiId:                { type: String, default: null },            // `pa` parsed out of deepLink
   deepLink:             { type: String, default: null },            // upi://pay?pa=...&am=...
   paymentLink:          { type: String, default: null },            // https:// gateway fallback
@@ -223,7 +226,7 @@ Deposit: 1,500.00
 Frozen: 0.00
 ```
 
-`Balance` is the live ledger balance (`balanceAfter` of the newest `status: 'success'` row). `Deposit` is what was credited to this group **today** (IST) — the `success.amount` of today's orders. `Frozen` is a fixed `0.00`: nothing in this system ever holds funds back, so it is not queried. Amounts are plain numbers with two decimals and no `₹`, unlike the `/daily` lines.
+`Balance` is the live ledger balance (`balanceAfter` of the newest `status: 'success'` row). `Deposit` is the money that came in **today** (IST) — the `success.amount` of today's orders where `direction !== 'debit'`. A manual **credit** counts, a manual **debit** never does: it is money leaving the group, so it must not read as a deposit. `Frozen` is a fixed `0.00`: nothing in this system ever holds funds back, so it is not queried. Amounts are plain numbers with two decimals and no `₹`, unlike the `/daily` lines.
 
 ### 6.4 `/deposit <amount>` — create a deposit
 
@@ -270,6 +273,8 @@ Scoped strictly to the invoking group's `_id` — one group can never see anothe
 
 Each line is `succeeded/total=rate% ₹succeeded amount`: how many orders landed in that window, how many of them reached `status: 'success'`, the resulting success rate to two decimals, and the money those successes totalled. An empty window reads `0/0=0.00% ₹0.00`, never `NaN`.
 
+Manual **debit** adjustments (`direction: 'debit'`) are excluded from all four windows — they are money leaving the group, so they add nothing to the total, to the numerator, or to the money figure. Manual credits count like any other order.
+
 The `₹` formatting uses `Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })`.
 
 **Today window** = midnight IST to now. Computed timezone-safe:
@@ -283,7 +288,7 @@ function startOfIstDay(now = new Date()) {
 }
 ```
 
-Implementation: four parallel aggregations over `BotOrder`, one per window (`now - 10m`, `now - 30m`, `now - 60m`, `startOfIstDay()`), each filtered by `{ group, createdAt: { $gte: since } }` with `$group` by `status` and `$sum` of `amount`. Group scope is part of every `$match`, so a group can only ever read its own rows.
+Implementation: four parallel aggregations over `BotOrder`, one per window (`now - 10m`, `now - 30m`, `now - 60m`, `startOfIstDay()`), each filtered by `{ group, direction: { $ne: 'debit' }, createdAt: { $gte: since } }` with `$group` by `status` and `$sum` of `amount`. Group scope is part of every `$match`, so a group can only ever read its own rows.
 
 ### 6.6 `/status <order id>` — one deposit's status
 
@@ -458,7 +463,7 @@ List endpoints use one standard shape, so a panel can share pagination and filte
 | `POST` | `/api/bot/groups/:groupId/ban` | `{ remark }` → `status: 'banned'` |
 | `POST` | `/api/bot/groups/:groupId/suspend` | `{ remark }` → `status: 'suspended'` |
 | `POST` | `/api/bot/groups/:groupId/unban` | `{ remark }` → `status: 'active'` |
-| `POST` | `/api/bot/groups/:groupId/adjust` | `{ amount, type: 'credit'\|'debit', remark }` → creates a `BotOrder` (`orderId` = `B…`, `network: 'MANUAL'`, `status: 'success'`) **and** the linked `note: 'adjustment'` BotTransaction in one transaction, then posts the deposit-style success slip in the group. Response carries `orderId` and `trnId`. Guards against negative resulting balance. |
+| `POST` | `/api/bot/groups/:groupId/adjust` | `{ amount, type: 'credit'\|'debit', remark }` → creates a `BotOrder` (`orderId` = `B…`, `network: 'MANUAL'`, `direction` = `type`, `status: 'success'`) **and** the linked `note: 'adjustment'` BotTransaction in one transaction, then posts the deposit-style success slip in the group. Response carries `orderId` and `trnId`. Guards against negative resulting balance. |
 | `GET` | `/api/bot/orders` | List orders — `?orderId&groupId&uid&status&from&to&page&limit&cursor` |
 | `GET` | `/api/bot/orders/:orderId` | Order detail + its BotTransaction if credited |
 | `POST` | `/api/bot/orders/:orderId/approve` | Manually credit a stuck `pending` order (same atomic claim + credit path as the webhook) |
@@ -596,7 +601,7 @@ The webhook signature path is still only manually verified — recommend a real 
 25. `GET /api/bot/transactions?groupId=32045` (a uid pasted into the group-id box) returns the same rows as `?uid=32045`; `?groupId=-1001234567890` returns every row of that group, including rows that only carry the stored `groupId` string; `GET /api/bot/orders?groupId=32045` behaves the same.
 26. A page of 20 groups uses one balance aggregation, not 20 separate balance queries.
 27. A list response carries `meta.nextCursor`; passing it back as `?cursor=` returns the next older page with no overlap, works together with `groupId`/`uid` and date filters, and an invalid cursor returns `400 cursor is invalid`.
-28. A successful `POST /api/bot/groups/:groupId/adjust` (credit **or** debit) → one `BotOrder` with a fresh `B…` id, `network: 'MANUAL'` and `status: 'success'`; one `BotTransaction` whose `order`/`orderId` point at it and which shares the order's `trnId`; `orderId` in the JSON response; and exactly one group message identical to a deposit success slip (`Order completed 💕` / `Order type: Payment Order` / `Order No: …` / `Status: Completed✅` / `Amount: …`). The new order is counted by `/daily` and by the `/balance` `Deposit` line like any other order, and answers `/status <order id>`.
+28. A successful `POST /api/bot/groups/:groupId/adjust` (credit **or** debit) → one `BotOrder` with a fresh `B…` id, `network: 'MANUAL'` and `status: 'success'`; one `BotTransaction` whose `order`/`orderId` point at it and which shares the order's `trnId`; `orderId` in the JSON response; and exactly one group message identical to a deposit success slip (`Order completed 💕` / `Order type: Payment Order` / `Order No: …` / `Status: Completed✅` / `Amount: …`). A **credit** adjustment counts in `/daily` and in the `/balance` `Deposit` line like any other order; a **debit** adjustment carries `direction: 'debit'` and is excluded from both, so money leaving the group never reads as a deposit. Every adjustment answers `/status <order id>`.
 
 ## 16. Open Questions
 

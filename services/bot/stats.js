@@ -13,18 +13,30 @@ function bucketStage() {
 }
 
 /**
+ * Match behind every deposit statistic: one group's orders, never a manual debit.
+ * A debit adjustment is money leaving the group, so it must not add to totals,
+ * to the success count, or to any money figure. `$ne: 'debit'` also matches rows
+ * written before the `direction` field existed (a missing field is not 'debit'),
+ * so nothing changes for orders that predate it.
+ *
+ * @param {ObjectId|String} groupId  TelegramGroup _id
+ * @param {Date|null} [since]        omit for all time
+ */
+function statsMatch(groupId, since) {
+  const match = { group: groupId, direction: { $ne: 'debit' } };
+  if (since) match.createdAt = { $gte: since };
+  return match;
+}
+
+/**
  * Orders in [since, now] for one group, folded into a full status bucket.
- * `since` omitted/undefined means all time.
- * Always filtered by `group` so a group can only ever see its own numbers.
+ * `since` omitted/undefined means all time. Manual debits are excluded.
  *
  * @param {ObjectId|String} groupId  TelegramGroup _id
  * @param {Date|null} [since]
  */
 async function getGroupStatsSince(groupId, since) {
-  const match = { group: groupId };
-  if (since) match.createdAt = { $gte: since };
-
-  const rows = await BotOrder.aggregate([{ $match: match }, bucketStage()]);
+  const rows = await BotOrder.aggregate([{ $match: statsMatch(groupId, since) }, bucketStage()]);
 
   const byStatus = {};
   for (const row of rows) {
@@ -93,6 +105,7 @@ function renderStatsReport({ groupId, title, today, all, balance, window = 'both
 module.exports = {
   getGroupStats,
   getGroupStatsSince,
+  statsMatch,
   getGroupOrderCounts,
   renderRateLine,
   renderRateReport,

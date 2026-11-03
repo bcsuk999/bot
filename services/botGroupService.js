@@ -203,6 +203,48 @@ async function backfillGroupUids() {
   return { updated };
 }
 
+/**
+ * One-off startup pass: give pre-existing adjustment orders their `direction`.
+ *
+ * `direction` was added after manual debits already existed, and a debit that is
+ * missing the field counts as a deposit in `/daily` and `/balance` until it is
+ * fixed. Gateway orders are always money in, so they are settled in one pass;
+ * only `network: 'MANUAL'` rows need their direction read from the ledger row.
+ * Touches nothing once every order carries a direction.
+ */
+async function backfillOrderDirections() {
+  const noDirection = { $or: [{ direction: { $exists: false } }, { direction: null }] };
+
+  const credited = await BotOrder.updateMany(
+    { ...noDirection, network: { $ne: 'MANUAL' } },
+    { $set: { direction: 'credit' } }
+  );
+
+  const manual = await BotOrder.find({ ...noDirection, network: 'MANUAL' })
+    .select('orderId trnId')
+    .lean();
+
+  let debits = 0;
+  for (const order of manual) {
+    try {
+      const txn = await BotTransaction.findOne(
+        order.trnId ? { trnId: order.trnId } : { orderId: order.orderId }
+      )
+        .select('type')
+        .lean();
+      const direction = txn?.type === 'debit' ? 'debit' : 'credit';
+      await BotOrder.updateOne({ orderId: order.orderId }, { $set: { direction } });
+      if (direction === 'debit') debits += 1;
+    } catch (err) {
+      logger.error({ orderId: order.orderId, err }, 'bot: failed to backfill order direction');
+    }
+  }
+
+  const updated = (credited.modifiedCount || 0) + manual.length;
+  if (updated) logger.info({ updated, debits }, 'bot: backfilled order directions');
+  return { updated, debits };
+}
+
 /** Active member or null. Used by every group-scoped command. */
 async function getActiveGroup(groupId) {
   const group = await getGroupByGroupId(groupId);
@@ -358,6 +400,7 @@ async function adjustGroup(groupObjectId, { amount, type, remark, createdBy } = 
             currency: 'INR',
             network: 'MANUAL',
             status: 'success',
+            direction: type,
             paidAt: new Date(),
             trnId,
             remark: cleanRemark,
@@ -495,6 +538,7 @@ module.exports = {
   getGroupUids,
   getGroupBalances,
   backfillGroupUids,
+  backfillOrderDirections,
   getActiveGroup,
   getActiveGroupIds,
   getGroupBalance,

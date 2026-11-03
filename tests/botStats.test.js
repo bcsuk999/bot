@@ -9,7 +9,7 @@ import {
   formatIst,
   escapeHtml,
 } from '../services/bot/format.js';
-import { renderStatsReport, renderRateReport, renderRateLine } from '../services/bot/stats.js';
+import { renderStatsReport, renderRateReport, renderRateLine, statsMatch } from '../services/bot/stats.js';
 
 describe('startOfIstDay', () => {
   it('returns midnight IST for a mid-afternoon IST instant', () => {
@@ -206,6 +206,20 @@ describe('renderRateLine / renderRateReport', () => {
       '😭 1 hour: 0/0=0.00% ₹0.00',
       '😭 Today: 1/1=100.00% ₹400.00',
     ]);
+  });
+});
+
+describe('statsMatch', () => {
+  it('excludes manual debits from every deposit statistic', () => {
+    const since = new Date('2026-11-03T00:00:00.000Z');
+    expect(statsMatch('g').direction).toEqual({ $ne: 'debit' });
+    expect(statsMatch('g', since).direction).toEqual({ $ne: 'debit' });
+  });
+
+  it('always scopes to one group and only adds a window when one is given', () => {
+    const since = new Date('2026-11-03T00:00:00.000Z');
+    expect(statsMatch('-100123')).toEqual({ group: '-100123', direction: { $ne: 'debit' } });
+    expect(statsMatch('-100123', since).createdAt).toEqual({ $gte: since });
   });
 });
 

@@ -46,6 +46,15 @@ const botOrderSchema = new mongoose.Schema(
       default: 'pending',
       index: true,
     },
+    // Which way the money moves. 'credit' for every deposit and every manual
+    // credit, 'debit' only for a manual withdrawal adjustment. Deposit stats key
+    // off this so money leaving the group can never inflate a deposit figure.
+    // Rows written before the field existed are missing it and read as 'credit'.
+    direction: {
+      type: String,
+      enum: ['credit', 'debit'],
+      default: 'credit',
+    },
     // `pa` parsed out of the gateway's upi:// deep link
     upiId: {
       type: String,

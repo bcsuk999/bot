@@ -94,6 +94,11 @@ connectDB()
     await botGroupService
       .backfillGroupUids()
       .catch((err) => logger.error({ err }, 'bot: group uid backfill failed'));
+    // Adjustment orders written before `direction` existed: without this, a
+    // manual debit already in the DB keeps counting as a deposit.
+    await botGroupService
+      .backfillOrderDirections()
+      .catch((err) => logger.error({ err }, 'bot: order direction backfill failed'));
     return startBot();
   })
   .catch((err) => logger.error({ err }, 'Bot start skipped (DB not ready)'));
