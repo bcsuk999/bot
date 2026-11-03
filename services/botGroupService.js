@@ -304,6 +304,13 @@ async function creditGroup(order, { remark, session } = {}) {
  * Manual credit/debit from the admin REST API. Always a ledger row with a
  * mandatory remark and createdBy audit trail. Rejects a negative resulting balance.
  *
+ * The adjustment also creates the BotOrder the ledger row points at, so it gets a
+ * real `B…` order id exactly like a deposit: it can be quoted, looked up with
+ * /status, and it is counted by /daily and /balance like any other order. The
+ * order is written `success` straight away - the ledger write below IS the
+ * settlement, there is no gateway to wait for - and `network: 'MANUAL'` marks it
+ * as hand-made so it can be told apart from a gateway order later.
+ *
  * Runs in a transaction so the balance read cannot race a concurrent deposit.
  */
 async function adjustGroup(groupObjectId, { amount, type, remark, createdBy } = {}) {
@@ -336,27 +343,56 @@ async function adjustGroup(groupObjectId, { amount, type, remark, createdBy } = 
       }
 
       const trnId = generateOrderId('BTXN');
+      const cleanRemark = String(remark).trim();
+
+      // The order is created first so the ledger row can reference it. Both rows
+      // carry the same trnId, which is what ties an adjustment back together.
+      const [order] = await BotOrder.create(
+        [
+          {
+            orderId: generateOrderId('B'),
+            group: group._id,
+            groupId: group.groupId,
+            amount: value,
+            receivedAmount: value,
+            currency: 'INR',
+            network: 'MANUAL',
+            status: 'success',
+            paidAt: new Date(),
+            trnId,
+            remark: cleanRemark,
+            requestedBy: createdBy ?? null,
+            requestedByUsername: 'admin',
+          },
+        ],
+        { session }
+      );
+
       const [transaction] = await BotTransaction.create(
         [
           {
             trnId,
             group: group._id,
             groupId: group.groupId,
-            order: null,
-            orderId: null,
+            order: order._id,
+            orderId: order.orderId,
             amount: value,
             type,
             note: 'adjustment',
             balanceAfter: next,
             status: 'success',
             createdBy: createdBy ?? null,
-            remark: String(remark).trim(),
+            remark: cleanRemark,
           },
         ],
         { session }
       );
 
-      result = { transaction, balance: next };
+      logger.info(
+        { groupId: group.groupId, orderId: order.orderId, trnId, type, amount: value },
+        'bot: manual adjustment'
+      );
+      result = { transaction, balance: next, order };
     });
     return result;
   } finally {

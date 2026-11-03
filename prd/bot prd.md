@@ -458,7 +458,7 @@ List endpoints use one standard shape, so a panel can share pagination and filte
 | `POST` | `/api/bot/groups/:groupId/ban` | `{ remark }` → `status: 'banned'` |
 | `POST` | `/api/bot/groups/:groupId/suspend` | `{ remark }` → `status: 'suspended'` |
 | `POST` | `/api/bot/groups/:groupId/unban` | `{ remark }` → `status: 'active'` |
-| `POST` | `/api/bot/groups/:groupId/adjust` | `{ amount, type: 'credit'\|'debit', remark }` → creates a `note: 'adjustment'` BotTransaction. Guards against negative resulting balance. |
+| `POST` | `/api/bot/groups/:groupId/adjust` | `{ amount, type: 'credit'\|'debit', remark }` → creates a `BotOrder` (`orderId` = `B…`, `network: 'MANUAL'`, `status: 'success'`) **and** the linked `note: 'adjustment'` BotTransaction in one transaction, then posts the deposit-style success slip in the group. Response carries `orderId` and `trnId`. Guards against negative resulting balance. |
 | `GET` | `/api/bot/orders` | List orders — `?orderId&groupId&uid&status&from&to&page&limit&cursor` |
 | `GET` | `/api/bot/orders/:orderId` | Order detail + its BotTransaction if credited |
 | `POST` | `/api/bot/orders/:orderId/approve` | Manually credit a stuck `pending` order (same atomic claim + credit path as the webhook) |
@@ -581,10 +581,10 @@ The webhook signature path is still only manually verified — recommend a real 
 10. The same webhook replayed → no second `BotTransaction`, no balance change.
 11. Gateway failure webhook → order `failed`, failure message in the group, balance unchanged.
 12. No cron, no TTL, no `expiresAt` on `BotOrder` — an abandoned order stays `pending` indefinitely until SimplyPay reports it expired. Verified by waiting 24h+ on a test order and confirming the status is still `pending` and still counted in `/daily`.
-13. `/daily` → today and all-time blocks, each with total orders, total amount, and success/pending/failed counts and sums, scoped to the invoking group. Group A's `/daily` must not reflect any order from group B.
+13. `/daily` → four success-rate lines (10 min / 30 min / 1 hour / today IST), each `succeeded/total=rate% ₹successful amount`, scoped to the invoking group. Group A's `/daily` must not reflect any order from group B.
 14. A `₹400` deposit credits exactly `₹400` even when an active `BonusConfig` would grant a bonus — no bonus leg in the ledger, and no `Commission` record is created for the group.
 15. `GET /api/bot/stats/:groupId?window=all` without a JWT → 401; with an admin JWT → 200 matching the Telegram numbers.
-16. `POST /api/bot/groups/:groupId/adjust` with a debit exceeding balance → 400, no ledger row, balance unchanged.
+16. `POST /api/bot/groups/:groupId/adjust` with a debit exceeding balance → 400, no order row, no ledger row, balance unchanged, no group message.
 17. Alert de-dupe → repeated unauthorized private-DM attempts from the same user within 5 minutes produce exactly 1 owner DM.
 18. Identity is group-only: after `/reg`, mutating `registeredBy` to a different Telegram user id changes no balance, no order, no stat, and no permission. `grep` the bot source for `userid` and confirm it appears only in comments and in the unrelated admin-JWT path.
 19. `/status <order id>` → reply shows order id, amount, status and created time; a credited order also shows `Success on`; an unknown id, or an id belonging to another group, replies `Order not found in this group.`
@@ -596,6 +596,7 @@ The webhook signature path is still only manually verified — recommend a real 
 25. `GET /api/bot/transactions?groupId=32045` (a uid pasted into the group-id box) returns the same rows as `?uid=32045`; `?groupId=-1001234567890` returns every row of that group, including rows that only carry the stored `groupId` string; `GET /api/bot/orders?groupId=32045` behaves the same.
 26. A page of 20 groups uses one balance aggregation, not 20 separate balance queries.
 27. A list response carries `meta.nextCursor`; passing it back as `?cursor=` returns the next older page with no overlap, works together with `groupId`/`uid` and date filters, and an invalid cursor returns `400 cursor is invalid`.
+28. A successful `POST /api/bot/groups/:groupId/adjust` (credit **or** debit) → one `BotOrder` with a fresh `B…` id, `network: 'MANUAL'` and `status: 'success'`; one `BotTransaction` whose `order`/`orderId` point at it and which shares the order's `trnId`; `orderId` in the JSON response; and exactly one group message identical to a deposit success slip (`Order completed 💕` / `Order type: Payment Order` / `Order No: …` / `Status: Completed✅` / `Amount: …`). The new order is counted by `/daily` and by the `/balance` `Deposit` line like any other order, and answers `/status <order id>`.
 
 ## 16. Open Questions
 

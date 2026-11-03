@@ -36,6 +36,8 @@ function serializeOrder(o) {
     deepLink: o.deepLink,
     paymentLink: o.paymentLink,
     simplypayOrderNo: o.simplypayOrderNo,
+    // 'MANUAL' marks an admin adjustment order; gateway deposits are 'SPAY'.
+    network: o.network,
     trnId: o.trnId,
     requestedBy: o.requestedBy,
     remark: o.remark,
@@ -193,11 +195,17 @@ exports.adjustGroup = async (req, res) => {
       createdBy: req.user?.userid ?? null,
     });
 
+    // Same group notice as a settled deposit, built from the order the adjustment
+    // just created. notifySuccess swallows send failures, so a group that has
+    // blocked the bot can never turn a committed adjustment into an error.
+    await notifySuccess(result.order, toNum(result.transaction.amount));
+
     return res.status(201).json({
       success: true,
       msg: 'Balance adjusted',
       groupId: group.groupId,
       uid: group.uid || null,
+      orderId: result.order.orderId,
       trnId: result.transaction.trnId,
       type,
       amount: toNum(result.transaction.amount),
