@@ -4,7 +4,7 @@ const botGroupService = require('../services/botGroupService');
 const BotOrder = require('../models/BotOrder');
 const TelegramGroup = require('../models/TelegramGroup');
 const { getClient, getConfig } = require('../services/bot/client');
-const { formatInr } = require('../services/bot/format');
+const { formatAmount, formatInr } = require('../services/bot/format');
 const logger = require('../utils/logger');
 
 // SimplyPay status codes. The gateway is the only thing that can expire an order.
@@ -35,15 +35,16 @@ async function notifyGroup(groupId, text) {
   }
 }
 
-// Group notifications: plain text, a success checkmark, and no "Credited" line (credited always
-// equals the order face value). Same payment-slip style as the /deposit reply.
-function buildSuccessNotice({ orderId, amount, balance }) {
+// Group notification for a settled deposit: a completed-order slip. The group
+// balance is deliberately left out - the member reads it back with /balance.
+function buildSuccessNotice({ orderId, amount }) {
   return [
-    '✅ Deposit successful',
+    'Order completed 💕',
     '',
-    `Order ID: ${orderId}`,
-    `Amount: ${formatInr(amount)}`,
-    `Balance: ${formatInr(balance)}`,
+    'Order type: Payment Order',
+    `Order No: ${orderId}`,
+    'Status: Completed✅',
+    `Amount: ${formatAmount(amount)}`,
   ].join('\n');
 }
 
@@ -57,10 +58,10 @@ function buildFailedNotice({ orderId, amount, reason }) {
   ].join('\n');
 }
 
-async function notifySuccess(order, credited, balance) {
+async function notifySuccess(order, credited) {
   await notifyGroup(
     order.groupId,
-    buildSuccessNotice({ orderId: order.orderId, amount: credited, balance })
+    buildSuccessNotice({ orderId: order.orderId, amount: credited })
   );
 }
 
@@ -155,7 +156,7 @@ async function handlePayinCallback(body = {}) {
   if (SUCCESS_STATUSES.includes(orderStatus)) {
     const settled = await settleSuccess(merOrderNo, orderStatus);
     if (settled.action !== 'credited') return { ok: true, action: settled.action };
-    await notifySuccess(settled.order, settled.credited, settled.balance);
+    await notifySuccess(settled.order, settled.credited);
     return { ok: true, action: 'credited', trnId: settled.trnId, balance: settled.balance };
   }
 

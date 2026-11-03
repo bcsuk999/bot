@@ -1,28 +1,29 @@
-const { getGroupStats, getGroupOrderCounts, renderStatsReport } = require('../stats');
-const botGroupService = require('../../botGroupService');
+const { getGroupStatsSince, renderRateReport, getGroupOrderCounts } = require('../stats');
+const { startOfIstDay } = require('../format');
 
-// /daily reports THAT group's stats. Today (IST) is the headline block,
-// all-time is context. Optional arg: `today` or `all` for a single block.
+const MINUTE = 60 * 1000;
+
+// /daily: success rate for four windows, newest window first. All four are always
+// shown so they can be read against each other - the old `today` / `all` argument
+// no longer selects a single block.
 async function cmdDaily(ctx) {
-  const { group, args } = ctx;
-  const arg = (args[0] || '').toLowerCase();
-  const window = arg === 'today' ? 'today' : arg === 'all' ? 'all' : 'both';
+  const { group } = ctx;
+  const now = Date.now();
 
-  const [today, all, balance] = await Promise.all([
-    getGroupStats(group._id, 'today'),
-    getGroupStats(group._id, 'all'),
-    botGroupService.getGroupBalance(group._id),
+  const [last10m, last30m, last1h, today] = await Promise.all([
+    getGroupStatsSince(group._id, new Date(now - 10 * MINUTE)),
+    getGroupStatsSince(group._id, new Date(now - 30 * MINUTE)),
+    getGroupStatsSince(group._id, new Date(now - 60 * MINUTE)),
+    getGroupStatsSince(group._id, startOfIstDay()),
   ]);
 
   return {
-    text: renderStatsReport({
-      groupId: group.groupId,
-      title: group.title,
-      today,
-      all,
-      balance,
-      window,
-    }),
+    text: renderRateReport([
+      { label: '10 min', bucket: last10m },
+      { label: '30 min', bucket: last30m },
+      { label: '1 hour', bucket: last1h },
+      { label: 'Today', bucket: today },
+    ]),
   };
 }
 

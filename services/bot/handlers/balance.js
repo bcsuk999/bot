@@ -1,24 +1,24 @@
 const botGroupService = require('../../botGroupService');
-const { getGroupOrderCounts } = require('../stats');
-const { formatInr } = require('../format');
+const { getGroupStats } = require('../stats');
+const { formatAmount } = require('../format');
 
+// Merchant balance slip. Balance is the live ledger balance, Deposit is what was
+// credited today (IST), Frozen is always zero - nothing in this system ever holds
+// funds back, so it is a fixed line rather than a query.
 async function cmdBalance(ctx) {
   const { group } = ctx;
-  const [balance, counts] = await Promise.all([
+  const [balance, today] = await Promise.all([
     botGroupService.getGroupBalance(group._id),
-    getGroupOrderCounts(group._id),
+    getGroupStats(group._id, 'today'),
   ]);
 
   return {
     text: [
-      'Group balance',
+      'Merchant balance:',
       '',
-      `Group ID: ${group.groupId}`,
-      `Balance: ${formatInr(balance)}`,
-      `Total credited: ${formatInr(group.totalCredited || 0)}`,
-      `Successful orders: ${counts.success}`,
-      `Failed orders: ${counts.failed + counts.expired}`,
-      `Pending orders: ${counts.pending}`,
+      `Balance: ${formatAmount(balance)}`,
+      `Deposit: ${formatAmount(today.success.amount)}`,
+      `Frozen: ${formatAmount(0)}`,
     ].join('\n'),
   };
 }

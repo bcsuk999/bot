@@ -24,7 +24,7 @@ const GROUP_MENU = [
   { command: 'balance', description: 'Show this group balance' },
   { command: 'deposit', description: 'Create a deposit: /deposit <amount>' },
   { command: 'status', description: 'Check a deposit: /status <order id>' },
-  { command: 'daily', description: 'Show this group deposit statistics' },
+  { command: 'daily', description: 'Show deposit success rates' },
 ];
 
 function getGroupAccessDenial(command, group) {

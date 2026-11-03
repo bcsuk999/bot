@@ -369,7 +369,7 @@ exports.approveOrder = async (req, res) => {
       return res.status(409).json({ success: 'failed', msg: 'Order was already settled' });
     }
 
-    await notifySuccess(settled.order, settled.credited, settled.balance);
+    await notifySuccess(settled.order, settled.credited);
 
     return res.status(201).json({
       success: true,

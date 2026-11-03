@@ -204,7 +204,7 @@ Registered by: @adminuser (987654321)
 Commands:
 /balance - Check this group balance
 /deposit <amount> - Create a deposit
-/daily   - This group deposit statistics
+/daily   - Deposit success rate (10m / 30m / 1h / today)
 ```
 
 `Registered By` is audit information about who typed the command. The member itself is the `Group ID` line — that is the identifier every later command, query and balance lookup uses. `UID` is the short public code support and the admin panel can quote or search by; a second `/reg` returns the same code.
@@ -216,15 +216,14 @@ Returns HTTP-equivalent payload `groupId`, `uid`, `title`, `username`, `balance`
 Private-chat variant (`/balance <groupId>`) is owner/admin only, so support can answer DMs.
 
 ```
-Group balance
+Merchant balance:
 
-Group ID: -1001234567890
-Balance: ₹12,500.00
-Total credited: ₹25,000.00
-Successful orders: 7
-Failed orders: 1
-Pending orders: 2
+Balance: 12,500.00
+Deposit: 1,500.00
+Frozen: 0.00
 ```
+
+`Balance` is the live ledger balance (`balanceAfter` of the newest `status: 'success'` row). `Deposit` is what was credited to this group **today** (IST) — the `success.amount` of today's orders. `Frozen` is a fixed `0.00`: nothing in this system ever holds funds back, so it is not queried. Amounts are plain numbers with two decimals and no `₹`, unlike the `/daily` lines.
 
 ### 6.4 `/deposit <amount>` — create a deposit
 
@@ -256,39 +255,22 @@ UPI ID: merchant@paytm
 
 If `upiId` cannot be parsed, the line reads `UPI ID: unavailable`, its copy button is omitted, and the keyboard falls back to `data.params.paymentLink` for the `Pay now` button.
 
-### 6.5 `/daily` — that group's daily deposit statistics
+### 6.5 `/daily` — that group's success rate
 
-Reports the deposit activity of the group it is invoked in. **Today (IST, midnight → now) is the headline block**; the all-time block is included as context below it. Visible to every member of the registered group.
+Reports the deposit success rate of the group it is invoked in across four windows, newest first: the last 10 minutes, 30 minutes, 1 hour, and today (IST). Visible to every member of the registered group. All four lines are always shown, so there is no `today` / `all` argument anymore.
 
 Scoped strictly to the invoking group's `_id` — one group can never see another's numbers. The REST equivalent is `GET /api/bot/stats/:groupId?window=today|all`.
 
 ```
-Daily report — -1001234567890 (SubnPay Deposits)
-
-Today (IST)
-Total orders: 12
-Total amount: ₹18,400.00
-Success: 9 (₹13,900.00)
-Pending: 2 (₹2,500.00)
-Failed: 1 (₹2,000.00)
-Expired: 0 (₹0.00)
-Reversed: 0 (₹0.00)
-
-All time
-Total orders: 148
-Total amount: ₹312,750.00
-Success: 131 (₹276,400.00)
-Pending: 9 (₹21,350.00)
-Failed: 8 (₹15,000.00)
-Expired: 0 (₹0.00)
-Reversed: 0 (₹0.00)
-
-Current balance: ₹91,200.00
+😭 10 min: 3/5=60.00% ₹1,500.00
+😭 30 min: 7/12=58.33% ₹4,200.00
+😭 1 hour: 12/20=60.00% ₹8,900.00
+😭 Today: 9/12=75.00% ₹13,900.00
 ```
 
-Optional args: `/daily today` (today block only), `/daily all` (all-time block only), `/daily` (both, as shown).
+Each line is `succeeded/total=rate% ₹succeeded amount`: how many orders landed in that window, how many of them reached `status: 'success'`, the resulting success rate to two decimals, and the money those successes totalled. An empty window reads `0/0=0.00% ₹0.00`, never `NaN`.
 
-"Total amount" = sum of `amount` across all orders in the window. `₹` formatting via `Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })`.
+The `₹` formatting uses `Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })`.
 
 **Today window** = midnight IST to now. Computed timezone-safe:
 
@@ -301,7 +283,7 @@ function startOfIstDay(now = new Date()) {
 }
 ```
 
-Implementation: one Mongo `$facet` aggregation over `BotOrder` filtered by `{ group, createdAt: { $gte: startOfIstDay() } }` and `{ group }`, with `$group` by `status` and `$sum` of `amount`. Two round-trips max, not N.
+Implementation: four parallel aggregations over `BotOrder`, one per window (`now - 10m`, `now - 30m`, `now - 60m`, `startOfIstDay()`), each filtered by `{ group, createdAt: { $gte: since } }` with `$group` by `status` and `$sum` of `amount`. Group scope is part of every `$match`, so a group can only ever read its own rows.
 
 ### 6.6 `/status <order id>` — one deposit's status
 
@@ -429,14 +411,15 @@ await TelegramGroup.updateOne({ _id: group._id }, {
 **Group notification** (new behaviour, required for the flow to be usable — flagging explicitly):
 
 ```
-Deposit successful
+Order completed 💕
 
-Order ID: B20260928093925967924200
-Amount: ₹400.00
-Balance: ₹12,900.00
+Order type: Payment Order
+Order No: B20260928093925967924200
+Status: Completed✅
+Amount: 400.00
 ```
 
-Same plain style for failures: `Deposit failed`, then `Order ID`, `Amount`, `Reason` — no emoji, no header icons. `Credited` is dropped because it always equals `Amount`.
+Failures keep the plainer slip: `Deposit failed`, then `Order ID`, `Amount`, `Reason` — no emoji, no header icons. `Credited` is dropped because it always equals `Amount`, and `Balance` is dropped because the member reads it back with `/balance`. Amounts on this slip are plain numbers with two decimals (no `₹`).
 
 Sent with `bot.sendMessage(group.groupId, ...)`. Failures are logged, never thrown — the webhook must still return `200`.
 

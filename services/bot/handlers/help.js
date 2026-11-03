@@ -6,7 +6,7 @@ const GROUP_LINES = [
   '/balance - Check this group balance',
   '/deposit <amount> - Create a deposit',
   '/status <order id> - Check a deposit status',
-  '/daily   - This group deposit statistics',
+  '/daily   - Deposit success rate (10m / 30m / 1h / today)',
 ];
 
 const REG_LINE = '/reg     - Register a group (run it inside the group)';

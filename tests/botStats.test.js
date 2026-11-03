@@ -9,7 +9,7 @@ import {
   formatIst,
   escapeHtml,
 } from '../services/bot/format.js';
-import { renderStatsReport } from '../services/bot/stats.js';
+import { renderStatsReport, renderRateReport, renderRateLine } from '../services/bot/stats.js';
 
 describe('startOfIstDay', () => {
   it('returns midnight IST for a mid-afternoon IST instant', () => {
@@ -176,6 +176,36 @@ describe('renderStatsReport', () => {
   it('omits the title segment when there is none', () => {
     const text = renderStatsReport({ groupId: 'g', today, all, balance: 0, window: 'all' });
     expect(text).toContain('Daily report — g');
+  });
+});
+
+describe('renderRateLine / renderRateReport', () => {
+  it('renders succeeded/total=rate% with the successful amount', () => {
+    const bucket = buildBucket({
+      success: { count: 3, amount: 1500 },
+      failed: { count: 2, amount: 500 },
+    });
+    expect(renderRateLine('10 min', bucket)).toBe('10 min: 3/5=60.00% ₹1,500.00');
+  });
+
+  it('renders an empty window as 0/0=0.00%, never NaN', () => {
+    expect(renderRateLine('30 min', emptyBucket())).toBe('30 min: 0/0=0.00% ₹0.00');
+    expect(renderRateLine('1 hour', undefined)).toBe('1 hour: 0/0=0.00% ₹0.00');
+  });
+
+  it('prefixes every window with the sobbing emoji, newest window first', () => {
+    const text = renderRateReport([
+      { label: '10 min', bucket: emptyBucket() },
+      { label: '30 min', bucket: emptyBucket() },
+      { label: '1 hour', bucket: emptyBucket() },
+      { label: 'Today', bucket: buildBucket({ success: { count: 1, amount: 400 } }) },
+    ]);
+    expect(text.split('\n')).toEqual([
+      '😭 10 min: 0/0=0.00% ₹0.00',
+      '😭 30 min: 0/0=0.00% ₹0.00',
+      '😭 1 hour: 0/0=0.00% ₹0.00',
+      '😭 Today: 1/1=100.00% ₹400.00',
+    ]);
   });
 });
 
