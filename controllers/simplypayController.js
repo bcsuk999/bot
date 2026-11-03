@@ -6,6 +6,7 @@ const simplypay = require('../services/simplypay');
 const { calculateBonus } = require('./adminBonusController');
 const { getCurrentBalance, generateOrderId } = require('../utils/helpers');
 const { approvePayin } = require('../services/payinService');
+const { settleBotOrder } = require('./botWebhookController');
 const logger = require('../utils/logger');
 
 // User creates INR deposit via SimplyPay
@@ -101,7 +102,17 @@ exports.payinCallback = async (req, res) => {
     if (!merOrderNo) return res.status(200).json({ success: true });
 
     const payin = await Payin.findOne({ payinId: merOrderNo });
-    if (!payin) return res.status(200).json({ success: true });
+    if (!payin) {
+      // Not a user Payin. The gateway does not reliably honour the per-order
+      // notifyUrl, so a group-deposit callback can land here instead of
+      // /webhook/simplypay/bot. Settle it as a bot order rather than returning
+      // 200 and silently dropping the payment.
+      const botResult = await settleBotOrder(merOrderNo, orderStatus);
+      if (botResult.action !== 'order_not_found') {
+        logger.info({ merOrderNo, action: botResult.action }, 'payinCallback: settled as bot order');
+      }
+      return res.status(200).json({ success: true });
+    }
 
     if (payin.status !== 'pending') return res.status(200).json({ success: true });
 

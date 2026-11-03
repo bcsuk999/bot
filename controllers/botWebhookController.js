@@ -137,18 +137,16 @@ async function settleSuccess(
 }
 
 /**
- * Settle a SimplyPay webhook for a group deposit.
- * Always responds 200 - a non-2xx makes the gateway retry.
+ * Apply a gateway status to a bot order. Shared by both webhook endpoints.
+ *
+ * The gateway does not always honour the per-order notifyUrl, so a group
+ * deposit callback can land on the plain payin endpoint
+ * (/webhook/simplypay/payin) instead of /webhook/simplypay/bot. That endpoint
+ * looks the id up as a Payin, finds nothing and returns 200 - silently dropping
+ * the payment and leaving the BotOrder pending forever. Callers that have
+ * already verified the signature therefore route unmatched ids through here.
  */
-async function handlePayinCallback(body = {}) {
-  if (!simplypay.verifySign(body)) {
-    logger.warn('bot: SimplyPay callback signature mismatch');
-    return { ok: true, action: 'bad_signature' };
-  }
-
-  const { merOrderNo, orderStatus } = body.data || {};
-  if (!merOrderNo) return { ok: true, action: 'no_order_no' };
-
+async function settleBotOrder(merOrderNo, orderStatus) {
   const peek = await BotOrder.findOne({ orderId: merOrderNo }).select('_id groupId orderId status').lean();
   if (!peek) return { ok: true, action: 'order_not_found' };
   if (peek.status !== 'pending') return { ok: true, action: 'already_' + peek.status };
@@ -186,6 +184,22 @@ async function handlePayinCallback(body = {}) {
   return { ok: true, action: 'no_op' };
 }
 
+/**
+ * Settle a SimplyPay webhook for a group deposit.
+ * Always responds 200 - a non-2xx makes the gateway retry.
+ */
+async function handlePayinCallback(body = {}) {
+  if (!simplypay.verifySign(body)) {
+    logger.warn('bot: SimplyPay callback signature mismatch');
+    return { ok: true, action: 'bad_signature' };
+  }
+
+  const { merOrderNo, orderStatus } = body.data || {};
+  if (!merOrderNo) return { ok: true, action: 'no_order_no' };
+
+  return settleBotOrder(merOrderNo, orderStatus);
+}
+
 // Express handler
 async function botPayinCallback(req, res) {
   try {
@@ -201,6 +215,7 @@ async function botPayinCallback(req, res) {
 module.exports = {
   botPayinCallback,
   handlePayinCallback,
+  settleBotOrder,
   claimOrder,
   settleSuccess,
   buildSuccessNotice,
