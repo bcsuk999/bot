@@ -188,13 +188,22 @@ exports.processPayout = async (req, res) => {
 
 // SimplyPay payout webhook callback (no auth - called by gateway)
 exports.payoutCallback = async (req, res) => {
+  // TEMP DEBUG: log the complete gateway request so a failing payout callback can
+  // be diagnosed from the raw payload. Remove this once the callback is fixed.
+  console.log('[SimplyPay payout webhook] content-type:', req.headers['content-type']);
+  console.log('[SimplyPay payout webhook] headers:', JSON.stringify(req.headers));
+  console.log('[SimplyPay payout webhook] body:', JSON.stringify(req.body));
+
   try {
     const body = req.body;
 
     if (!simplypay.verifySign(body)) {
+      console.log('[SimplyPay payout webhook] signature verification FAILED');
       logger.warn('SimplyPay payout callback signature mismatch');
       return res.status(200).json({ success: true });
     }
+
+    console.log('[SimplyPay payout webhook] signature verification OK');
 
     const { merOrderNo, orderStatus } = body.data || {};
     if (!merOrderNo) return res.status(200).json({ success: true });
