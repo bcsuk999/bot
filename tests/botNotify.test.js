@@ -11,11 +11,22 @@ describe('buildSuccessNotice', () => {
         'Order completed 💕',
         '',
         'Order type: Payment Order',
+        'type: payin',
         'Order No: B20260928093925967924200',
         'Status: Completed✅',
         'Amount: 400.00',
       ].join('\n')
     );
+  });
+
+  it('labels a debit adjustment as a payout', () => {
+    const text = buildSuccessNotice({ orderId: 'B1', amount: 20, direction: 'debit' });
+    expect(text).toContain('type: payout');
+  });
+
+  it('labels a credit (including a bot deposit) as a payin', () => {
+    expect(buildSuccessNotice({ orderId: 'B1', amount: 20, direction: 'credit' })).toContain('type: payin');
+    expect(buildSuccessNotice({ orderId: 'B1', amount: 20 })).toContain('type: payin');
   });
 
   it('omits the balance - it is read back with /balance', () => {

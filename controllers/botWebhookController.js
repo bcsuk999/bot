@@ -37,11 +37,17 @@ async function notifyGroup(groupId, text) {
 
 // Group notification for a settled deposit: a completed-order slip. The group
 // balance is deliberately left out - the member reads it back with /balance.
-function buildSuccessNotice({ orderId, amount }) {
+//
+// `direction` comes from the BotOrder: gateway deposits and manual credits are
+// 'credit' (payin), while a manual withdrawal adjustment is 'debit' (payout).
+// The type line makes the two indistinguishable-looking slips tell apart.
+function buildSuccessNotice({ orderId, amount, direction }) {
+  const type = direction === 'debit' ? 'payout' : 'payin';
   return [
     'Order completed 💕',
     '',
     'Order type: Payment Order',
+    `type: ${type}`,
     `Order No: ${orderId}`,
     'Status: Completed✅',
     `Amount: ${formatAmount(amount)}`,
@@ -61,7 +67,7 @@ function buildFailedNotice({ orderId, amount, reason }) {
 async function notifySuccess(order, credited) {
   await notifyGroup(
     order.groupId,
-    buildSuccessNotice({ orderId: order.orderId, amount: credited })
+    buildSuccessNotice({ orderId: order.orderId, amount: credited, direction: order.direction })
   );
 }
 
