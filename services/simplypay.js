@@ -43,10 +43,12 @@ function generateSign(params, appSecret) {
   return crypto.createHash('sha256').update(paramsString, 'utf8').digest('hex');
 }
 
-function verifySign(params) {
+function verifySign(params, appSecret = SECRET) {
   const { sign, ...rest } = params;
   if (!sign) return false;
-  return generateSign(rest) === sign;
+  // The gateway signs with the shared secret, so verification must append it
+  // too. Omitting SECRET made every legitimate callback fail the check.
+  return generateSign(rest, appSecret) === sign;
 }
 
 async function apiCall(path, body) {

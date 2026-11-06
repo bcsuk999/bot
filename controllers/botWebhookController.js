@@ -194,7 +194,9 @@ async function handlePayinCallback(body = {}) {
     return { ok: true, action: 'bad_signature' };
   }
 
-  const { merOrderNo, orderStatus } = body.data || {};
+  // Accept both callback shapes: flat fields or `{ data: { ... } }`.
+  const data = body.data && typeof body.data === 'object' ? body.data : body;
+  const { merOrderNo, orderStatus } = data;
   if (!merOrderNo) return { ok: true, action: 'no_order_no' };
 
   return settleBotOrder(merOrderNo, orderStatus);

@@ -98,7 +98,9 @@ exports.payinCallback = async (req, res) => {
       return res.status(200).json({ success: true });
     }
 
-    const { merOrderNo, orderStatus } = body.data || {};
+    // Accept both callback shapes: flat fields or `{ data: { ... } }`.
+    const data = body.data && typeof body.data === 'object' ? body.data : body;
+    const { merOrderNo, orderStatus } = data;
     if (!merOrderNo) return res.status(200).json({ success: true });
 
     const payin = await Payin.findOne({ payinId: merOrderNo });
@@ -188,24 +190,18 @@ exports.processPayout = async (req, res) => {
 
 // SimplyPay payout webhook callback (no auth - called by gateway)
 exports.payoutCallback = async (req, res) => {
-  // TEMP DEBUG: log the complete gateway request so a failing payout callback can
-  // be diagnosed from the raw payload. Remove this once the callback is fixed.
-  console.log('[SimplyPay payout webhook] content-type:', req.headers['content-type']);
-  console.log('[SimplyPay payout webhook] headers:', JSON.stringify(req.headers));
-  console.log('[SimplyPay payout webhook] body:', JSON.stringify(req.body));
-
   try {
     const body = req.body;
 
     if (!simplypay.verifySign(body)) {
-      console.log('[SimplyPay payout webhook] signature verification FAILED');
       logger.warn('SimplyPay payout callback signature mismatch');
       return res.status(200).json({ success: true });
     }
 
-    console.log('[SimplyPay payout webhook] signature verification OK');
-
-    const { merOrderNo, orderStatus } = body.data || {};
+    // The gateway sends callbacks in two shapes: flat fields, or the same fields
+    // wrapped in `data`. Accept both so a payout is never silently dropped.
+    const data = body.data && typeof body.data === 'object' ? body.data : body;
+    const { merOrderNo, orderStatus } = data;
     if (!merOrderNo) return res.status(200).json({ success: true });
 
     const payout = await Payout.findOne({ payoutId: merOrderNo });
@@ -219,7 +215,7 @@ exports.payoutCallback = async (req, res) => {
     if (SUCCESS_STATUSES.includes(orderStatus)) {
       payout.status = 'success';
       payout.completedAt = new Date();
-      payout.remark = `SimplyPay order: ${body.data?.orderNo || ''}`;
+      payout.remark = `SimplyPay order: ${data.orderNo || ''}`;
       await payout.save();
     } else if (FAILED_STATUSES.includes(orderStatus)) {
       payout.status = 'failed';
@@ -251,7 +247,7 @@ exports.payoutCallback = async (req, res) => {
           amount: refundAmount,
           type: 'credit',
           note: 'payout',
-          remark: `Refund for failed payout ${payoutId}`,
+          remark: `Refund for failed payout ${merOrderNo}`,
           balanceAfter: newBalance,
           status: 'success',
           referenceId: merOrderNo,
