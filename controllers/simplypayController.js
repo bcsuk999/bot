@@ -236,24 +236,27 @@ exports.payoutCallback = async (req, res) => {
         }
       }
 
-      const refundAmount = parseFloat(payout.amount.toString());
-      const currentBalance = await getCurrentBalance(payout.user);
-      const newBalance = currentBalance + refundAmount;
+      // Merchant-level admin payouts have no user wallet to refund.
+      if (payout.user) {
+        const refundAmount = parseFloat(payout.amount.toString());
+        const currentBalance = await getCurrentBalance(payout.user);
+        const newBalance = currentBalance + refundAmount;
 
-      const refundTrnId = generateOrderId('TXN');
+        const refundTrnId = generateOrderId('TXN');
 
-      await Transaction.create({
-        trnId: refundTrnId,
-        user: payout.user,
-        userid: payout.userid,
-        amount: refundAmount,
-        type: 'credit',
-        note: 'payout',
-        remark: `Refund for failed payout ${payoutId}`,
-        balanceAfter: newBalance,
-        status: 'success',
-        referenceId: merOrderNo,
-      });
+        await Transaction.create({
+          trnId: refundTrnId,
+          user: payout.user,
+          userid: payout.userid,
+          amount: refundAmount,
+          type: 'credit',
+          note: 'payout',
+          remark: `Refund for failed payout ${payoutId}`,
+          balanceAfter: newBalance,
+          status: 'success',
+          referenceId: merOrderNo,
+        });
+      }
     }
 
     return res.status(200).json({ success: true });
@@ -263,8 +266,10 @@ exports.payoutCallback = async (req, res) => {
   }
 };
 
-// Admin creates a payout via SimplyPay for any user.
+// Admin creates a payout via SimplyPay.
 //
+// `userid` is optional: when present the payout debits that user's wallet, and
+// when absent it is a merchant-level payout with no wallet or ledger entry.
 // Bank details can be supplied directly (`ifsc`, `account`, `holderName`) or
 // taken from one of the user's enabled bank accounts (`bankId` / first active
 // bank). A second-step payout password is required for every withdrawal.
@@ -287,8 +292,8 @@ exports.adminCreatePayout = async (req, res) => {
       password,
     } = req.body;
 
-    if (!userid || !amount) {
-      return res.status(400).json({ success: 'failed', msg: 'userid and amount are required' });
+    if (!amount) {
+      return res.status(400).json({ success: 'failed', msg: 'amount is required' });
     }
 
     if (!verifyPayoutPassword(password)) {
@@ -300,13 +305,19 @@ exports.adminCreatePayout = async (req, res) => {
       return res.status(400).json({ success: 'failed', msg: 'Invalid amount' });
     }
 
-    const user = await User.findOne({ userid: parseInt(userid), role: 'user' }).lean();
-    if (!user) {
-      return res.status(404).json({ success: 'failed', msg: 'User not found' });
-    }
+    // userid is optional. When it is supplied the payout is tied to that user's
+    // wallet and their balance is debited. Without it this is a merchant-level
+    // admin payout: no user lookup, balance check or ledger entry.
+    let user = null;
+    if (userid != null && String(userid).trim() !== '') {
+      user = await User.findOne({ userid: parseInt(userid), role: 'user' }).lean();
+      if (!user) {
+        return res.status(404).json({ success: 'failed', msg: 'User not found' });
+      }
 
-    if (!user.withdrawal) {
-      return res.status(400).json({ success: 'failed', msg: 'Payout is disabled for this user' });
+      if (!user.withdrawal) {
+        return res.status(400).json({ success: 'failed', msg: 'Payout is disabled for this user' });
+      }
     }
 
     // Direct bank details win over a stored bank account. All three are required
@@ -330,6 +341,13 @@ exports.adminCreatePayout = async (req, res) => {
         ifsc: String(ifsc).trim().toUpperCase(),
       };
     } else {
+      if (!user) {
+        return res.status(400).json({
+          success: 'failed',
+          msg: 'ifsc, account and holderName are required when userid is not provided',
+        });
+      }
+
       const Bank = require('../models/Bank');
       let bank;
       if (bankId) {
@@ -361,9 +379,9 @@ exports.adminCreatePayout = async (req, res) => {
     const resolvedPayoutType = hasDirectBank ? 'IFSC' : payoutType || 'IFSC';
     const extra = {
       payoutType: resolvedPayoutType,
-      name: (holderName && String(holderName).trim()) || name || user.mobile || bankDetails.holderName,
-      email: email || `${user.mobile || '9999999999'}@example.com`,
-      mobile: mobile || user.mobile || '',
+      name: (holderName && String(holderName).trim()) || name || user?.mobile || bankDetails.holderName,
+      email: email || (user?.mobile ? `${user.mobile}@example.com` : 'admin@subnpay'),
+      mobile: mobile || user?.mobile || '',
     };
 
     if (extra.payoutType === 'UPI') {
@@ -376,23 +394,25 @@ exports.adminCreatePayout = async (req, res) => {
       extra.account = bankDetails.accountNumber;
     }
 
-    const currentBalance = await getCurrentBalance(user._id);
-    if (currentBalance < parsedAmount) {
-      return res.status(400).json({
-        success: 'failed',
-        msg: `Insufficient balance. Required: ${parsedAmount}, Available: ${currentBalance}`,
-      });
+    let currentBalance = null;
+    if (user) {
+      currentBalance = await getCurrentBalance(user._id);
+      if (currentBalance < parsedAmount) {
+        return res.status(400).json({
+          success: 'failed',
+          msg: `Insufficient balance. Required: ${parsedAmount}, Available: ${currentBalance}`,
+        });
+      }
     }
 
     const payoutId = generateOrderId('PO');
-    const trnId = generateOrderId('TXN');
-
-    const runningBalance = currentBalance - parsedAmount;
+    const trnId = user ? generateOrderId('TXN') : null;
+    const runningBalance = user ? currentBalance - parsedAmount : null;
 
     await Payout.create({
       payoutId,
-      user: user._id,
-      userid: user.userid,
+      user: user?._id || null,
+      userid: user?.userid ?? null,
       amount: parsedAmount,
       status: 'pending',
       bankName: bankDetails.bankName,
@@ -402,18 +422,20 @@ exports.adminCreatePayout = async (req, res) => {
       trnId,
     });
 
-    await Transaction.create({
-      trnId,
-      user: user._id,
-      userid: user.userid,
-      amount: parsedAmount,
-      type: 'debit',
-      note: 'payout',
-      remark: 'Admin initiated payout via SimplyPay',
-      balanceAfter: runningBalance,
-      status: 'success',
-      referenceId: payoutId,
-    });
+    if (user) {
+      await Transaction.create({
+        trnId,
+        user: user._id,
+        userid: user.userid,
+        amount: parsedAmount,
+        type: 'debit',
+        note: 'payout',
+        remark: 'Admin initiated payout via SimplyPay',
+        balanceAfter: runningBalance,
+        status: 'success',
+        referenceId: payoutId,
+      });
+    }
 
     const apiRes = await simplypay.createPayoutOrder({
       merOrderNo: payoutId,
@@ -425,14 +447,16 @@ exports.adminCreatePayout = async (req, res) => {
     if (apiRes.code !== 0) {
       const errMsg = apiRes.msg || apiRes.error || `SimplyPay error (code: ${apiRes.code})`;
       await Payout.findOneAndUpdate({ payoutId }, { status: 'failed', remark: errMsg });
-      await Transaction.findOneAndUpdate({ trnId }, { status: 'reversed', remark: errMsg });
+      if (trnId) {
+        await Transaction.findOneAndUpdate({ trnId }, { status: 'reversed', remark: errMsg });
+      }
       return res.status(400).json({ success: 'failed', msg: errMsg });
     }
 
     return res.status(201).json({
       success: true,
       payoutId,
-      userid: user.userid,
+      userid: user?.userid ?? null,
       amount: parsedAmount,
       currency: 'INR',
       orderNo: apiRes.data?.orderNo || null,

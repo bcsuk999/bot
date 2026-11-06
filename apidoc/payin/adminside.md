@@ -579,9 +579,9 @@ receivedAmount = 100 + 11.2 = 111.2
 ### Create Direct Bank Payout via SimplyPay
 
 #### Endpoint: `POST /api/admin/simplypay/payout`
-- **Description:** Admin-only payout to a bank account. The destination can be supplied directly with `ifsc`, `account` and `holderName` instead of a saved `bankId`. The amount is debited from the user's balance and sent through SimplyPay.
+- **Description:** Admin-only payout to a bank account. The destination can be supplied directly with `ifsc`, `account` and `holderName` instead of a saved `bankId`. When `userid` is supplied the amount is debited from that user's balance; when it is omitted the payout is a merchant-level admin payout and no user wallet is touched.
 - **Headers:** `Authorization: Bearer <admin_token>`
-- **Request Body:**
+- **Request Body (user payout):**
   ```json
   {
     "userid": 10001,
@@ -593,12 +593,25 @@ receivedAmount = 100 + 11.2 = 111.2
     "password": "123123"
   }
   ```
+- **Request Body (merchant-level payout — no userid):**
+  ```json
+  {
+    "amount": 500,
+    "ifsc": "SBIN0001234",
+    "account": "1234567890",
+    "holderName": "John Doe",
+    "bankName": "State Bank of India",
+    "password": "123123"
+  }
+  ```
 - **Validation:**
-  - `userid` and `amount` required
+  - `amount` required
+  - `userid` optional
   - `password` required — second-step payout password (`ADMIN_PAYOUT_PASSWORD`, default `123123`)
   - `ifsc`, `account` and `holderName` required together for a direct bank payout
-  - If no direct bank details are sent, the user's active bank account (`bankId` or first enabled bank) is used
-  - User must exist, be active, have payouts enabled, and have sufficient balance
+  - When `userid` is omitted, direct bank details are required (there is no saved bank to fall back to)
+  - When `userid` is supplied, it must exist, be active, have payouts enabled, and have sufficient balance
+  - If `userid` is supplied without direct bank details, the user's active bank account (`bankId` or first enabled bank) is used
 - **Response (201):**
   ```json
   {
@@ -617,10 +630,12 @@ receivedAmount = 100 + 11.2 = 111.2
     }
   }
   ```
+  For a merchant-level payout, `userid` is `null`.
 - **Errors:**
-  - 400: `{ "success": "failed", "msg": "userid and amount are required" }`
+  - 400: `{ "success": "failed", "msg": "amount is required" }`
   - 403: `{ "success": "failed", "msg": "Invalid payout password" }`
   - 400: `{ "success": "failed", "msg": "ifsc, account and holderName are required for a bank payout" }`
+  - 400: `{ "success": "failed", "msg": "ifsc, account and holderName are required when userid is not provided" }`
   - 400: `{ "success": "failed", "msg": "Insufficient balance. Required: 500, Available: 100" }`
   - 400: `{ "success": "failed", "msg": "SimplyPay payout failed" }`
 

@@ -298,24 +298,27 @@ exports.rejectPayout = async (req, res) => {
       }
     }
 
-    const refundAmount = toNum(payout.amount);
-    const currentBalance = await getCurrentBalance(payout.user);
-    const newBalance = currentBalance + refundAmount;
+    // Merchant-level admin payouts have no user wallet to refund.
+    if (payout.user) {
+      const refundAmount = toNum(payout.amount);
+      const currentBalance = await getCurrentBalance(payout.user);
+      const newBalance = currentBalance + refundAmount;
 
-    const refundTrnId = generateOrderId('TXN');
+      const refundTrnId = generateOrderId('TXN');
 
-    await Transaction.create({
-      trnId: refundTrnId,
-      user: payout.user,
-      userid: payout.userid,
-      amount: refundAmount,
-      type: 'credit',
-      note: 'payout',
-      remark: `Refund for rejected payout ${payoutId}`,
-      balanceAfter: newBalance,
-      status: 'success',
-      referenceId: payoutId,
-    });
+      await Transaction.create({
+        trnId: refundTrnId,
+        user: payout.user,
+        userid: payout.userid,
+        amount: refundAmount,
+        type: 'credit',
+        note: 'payout',
+        remark: `Refund for rejected payout ${payoutId}`,
+        balanceAfter: newBalance,
+        status: 'success',
+        referenceId: payoutId,
+      });
+    }
 
     return res.json({
       success: true,

@@ -8,10 +8,11 @@ const payoutSchema = new mongoose.Schema(
       index: true,
       required: true,
     },
+    // Optional: admin direct payouts are not tied to a user wallet.
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      default: null,
       index: true,
     },
     userid: {
