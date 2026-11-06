@@ -9,6 +9,20 @@ const { approvePayin } = require('../services/payinService');
 const { settleBotOrder } = require('./botWebhookController');
 const logger = require('../utils/logger');
 
+// Admins post bank details under a few different shapes depending on the panel
+// version: top level, nested under `bank` / `bankDetails`, and with aliases
+// (`account` / `accountNumber`, `ifsc` / `ifscCode`). Normalise them so a payout
+// always stores exactly the details the admin sent instead of falling back to
+// the user's saved (often placeholder) bank.
+function firstFilled(...values) {
+  for (const value of values) {
+    if (value == null) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return '';
+}
+
 // User creates INR deposit via SimplyPay
 exports.createPayin = async (req, res) => {
   try {
@@ -140,7 +154,30 @@ exports.payinCallback = async (req, res) => {
 exports.processPayout = async (req, res) => {
   try {
     const { payoutId } = req.params;
-    const { payoutType, vpa, ifsc, account, name, email, mobile } = req.body;
+    const { payoutType, vpa, name, email, mobile, holderName, bankName } = req.body;
+
+    const nestedBank =
+      [req.body.bank, req.body.bankDetails, req.body.beneficiary].find(
+        (value) => value && typeof value === 'object'
+      ) || {};
+
+    const directIfsc = firstFilled(req.body.ifsc, req.body.ifscCode, nestedBank.ifsc, nestedBank.ifscCode);
+    const directAccount = firstFilled(
+      req.body.account,
+      req.body.accountNumber,
+      nestedBank.account,
+      nestedBank.accountNumber,
+      nestedBank.accountNo,
+      nestedBank.accNo
+    );
+    const directHolder = firstFilled(
+      holderName,
+      nestedBank.holderName,
+      nestedBank.accountHolder,
+      nestedBank.beneficiaryName,
+      nestedBank.name
+    );
+    const directBankName = firstFilled(bankName, nestedBank.bankName);
 
     const payout = await Payout.findOne({ payoutId });
     if (!payout) return res.status(404).json({ success: 'failed', msg: 'Payout not found' });
@@ -151,7 +188,7 @@ exports.processPayout = async (req, res) => {
 
     const extra = {
       payoutType: payoutType || 'UPI',
-      name: name || user.mobile,
+      name: directHolder || name || user.mobile,
       email: email || '',
       mobile: mobile || user.mobile,
     };
@@ -160,9 +197,18 @@ exports.processPayout = async (req, res) => {
       if (!vpa) return res.status(400).json({ success: 'failed', msg: 'vpa is required for UPI payout' });
       extra.vpa = vpa;
     } else if (extra.payoutType === 'IFSC') {
-      if (!ifsc || !account) return res.status(400).json({ success: 'failed', msg: 'ifsc and account are required for IFSC payout' });
-      extra.ifsc = ifsc;
-      extra.account = account;
+      if (!directIfsc || !directAccount) return res.status(400).json({ success: 'failed', msg: 'ifsc and account are required for IFSC payout' });
+      extra.ifsc = directIfsc;
+      extra.account = directAccount;
+
+      // Persist exactly what the admin sent so the payout record does not keep
+      // showing the user's saved (placeholder) bank when a different account
+      // was used for this payout.
+      payout.ifsc = directIfsc.toUpperCase();
+      payout.accountNumber = directAccount;
+      if (directHolder) payout.holderName = directHolder;
+      if (directBankName) payout.bankName = directBankName;
+      await payout.save();
     }
 
     const apiRes = await simplypay.createPayoutOrder({
@@ -316,14 +362,40 @@ exports.adminCreatePayout = async (req, res) => {
       }
     }
 
+    // Accept the bank details in every shape the admin panel has used: flat
+    // fields, a nested `bank` / `bankDetails` object, and the common aliases.
+    // Without this the controller saw no direct details and silently saved the
+    // user's saved bank (placeholder data) instead of what the admin entered.
+    const nestedBank =
+      [req.body.bank, req.body.bankDetails, req.body.beneficiary].find(
+        (value) => value && typeof value === 'object'
+      ) || {};
+
+    const directIfsc = firstFilled(ifsc, nestedBank.ifsc, nestedBank.ifscCode);
+    const directAccount = firstFilled(
+      account,
+      accountNumber,
+      nestedBank.account,
+      nestedBank.accountNumber,
+      nestedBank.accountNo,
+      nestedBank.accNo
+    );
+    const directHolder = firstFilled(
+      holderName,
+      nestedBank.holderName,
+      nestedBank.accountHolder,
+      nestedBank.beneficiaryName,
+      nestedBank.name
+    );
+    const directBankName = firstFilled(bankName, nestedBank.bankName);
+
     // Direct bank details win over a stored bank account. All three are required
     // together so a payout can never go to a half-specified account.
-    const directAccount = account ?? accountNumber;
-    const hasDirectBank = ifsc != null || directAccount != null || holderName != null;
+    const hasDirectBank = Boolean(directIfsc || directAccount || directHolder);
 
     let bankDetails;
     if (hasDirectBank) {
-      if (!ifsc || !directAccount || !holderName) {
+      if (!directIfsc || !directAccount || !directHolder) {
         return res.status(400).json({
           success: 'failed',
           msg: 'ifsc, account and holderName are required for a bank payout',
@@ -331,10 +403,10 @@ exports.adminCreatePayout = async (req, res) => {
       }
 
       bankDetails = {
-        bankName: String(bankName || 'Bank Transfer').trim(),
-        holderName: String(holderName).trim(),
-        accountNumber: String(directAccount).trim(),
-        ifsc: String(ifsc).trim().toUpperCase(),
+        bankName: directBankName || 'Bank Transfer',
+        holderName: directHolder,
+        accountNumber: directAccount,
+        ifsc: directIfsc.toUpperCase(),
       };
     } else {
       if (!user) {
@@ -375,7 +447,7 @@ exports.adminCreatePayout = async (req, res) => {
     const resolvedPayoutType = hasDirectBank ? 'IFSC' : payoutType || 'IFSC';
     const extra = {
       payoutType: resolvedPayoutType,
-      name: (holderName && String(holderName).trim()) || name || user?.mobile || bankDetails.holderName,
+      name: directHolder || name || user?.mobile || bankDetails.holderName,
       email: email || (user?.mobile ? `${user.mobile}@example.com` : 'admin@subnpay'),
       mobile: mobile || user?.mobile || '',
     };
