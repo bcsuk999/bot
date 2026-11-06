@@ -576,6 +576,92 @@ receivedAmount = 100 + 11.2 = 111.2
 
 ---
 
+### Create Direct Bank Payout via SimplyPay
+
+#### Endpoint: `POST /api/admin/simplypay/payout`
+- **Description:** Admin-only payout to a bank account. The destination can be supplied directly with `ifsc`, `account` and `holderName` instead of a saved `bankId`. The amount is debited from the user's balance and sent through SimplyPay.
+- **Headers:** `Authorization: Bearer <admin_token>`
+- **Request Body:**
+  ```json
+  {
+    "userid": 10001,
+    "amount": 500,
+    "ifsc": "SBIN0001234",
+    "account": "1234567890",
+    "holderName": "John Doe",
+    "bankName": "State Bank of India",
+    "password": "123123"
+  }
+  ```
+- **Validation:**
+  - `userid` and `amount` required
+  - `password` required — second-step payout password (`ADMIN_PAYOUT_PASSWORD`, default `123123`)
+  - `ifsc`, `account` and `holderName` required together for a direct bank payout
+  - If no direct bank details are sent, the user's active bank account (`bankId` or first enabled bank) is used
+  - User must exist, be active, have payouts enabled, and have sufficient balance
+- **Response (201):**
+  ```json
+  {
+    "success": true,
+    "payoutId": "PO20260831100400123456789",
+    "userid": 10001,
+    "amount": 500,
+    "currency": "INR",
+    "orderNo": "20250905123456789",
+    "status": "pending",
+    "bank": {
+      "bankName": "State Bank of India",
+      "holderName": "John Doe",
+      "accountNumber": "1234567890",
+      "ifsc": "SBIN0001234"
+    }
+  }
+  ```
+- **Errors:**
+  - 400: `{ "success": "failed", "msg": "userid and amount are required" }`
+  - 403: `{ "success": "failed", "msg": "Invalid payout password" }`
+  - 400: `{ "success": "failed", "msg": "ifsc, account and holderName are required for a bank payout" }`
+  - 400: `{ "success": "failed", "msg": "Insufficient balance. Required: 500, Available: 100" }`
+  - 400: `{ "success": "failed", "msg": "SimplyPay payout failed" }`
+
+---
+
+### List SimplyPay Payout Records
+
+#### Endpoint: `GET /api/admin/simplypay/payouts`
+- **Description:** List payout records with pagination.
+- **Headers:** `Authorization: Bearer <admin_token>`
+- **Query Params:** `userid`, `status` (`pending` | `success` | `failed`), `payoutId`, `page`, `limit`
+- **Response (200):**
+  ```json
+  {
+    "success": true,
+    "msg": "Payouts fetched",
+    "count": 1,
+    "page": 1,
+    "limit": 20,
+    "totalPages": 1,
+    "payouts": [
+      {
+        "payoutId": "PO20260831100400123456789",
+        "userid": 10001,
+        "amount": 500,
+        "status": "pending",
+        "bankName": "State Bank of India",
+        "holderName": "John Doe",
+        "accountNumber": "1234567890",
+        "ifsc": "SBIN0001234",
+        "trnId": "TXN20260831100400123456789",
+        "remark": "",
+        "createdAt": "2026-08-31T10:04:00.000Z",
+        "updatedAt": "2026-08-31T10:04:00.000Z"
+      }
+    ]
+  }
+  ```
+
+---
+
 ## Webhook Callbacks (Gateway → Backend)
 
 These endpoints are called by SimplyPay gateway. No auth required.

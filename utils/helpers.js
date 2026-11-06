@@ -1,5 +1,18 @@
+const crypto = require('crypto');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
+
+// Second-step verification for admin withdrawals. Override with
+// ADMIN_PAYOUT_PASSWORD in production; the default keeps local setups working.
+const DEFAULT_PAYOUT_PASSWORD = '123123';
+
+function verifyPayoutPassword(input, expected = process.env.ADMIN_PAYOUT_PASSWORD || DEFAULT_PAYOUT_PASSWORD) {
+  if (input == null || expected == null) return false;
+  const given = Buffer.from(String(input), 'utf8');
+  const wanted = Buffer.from(String(expected), 'utf8');
+  if (given.length !== wanted.length) return false;
+  return crypto.timingSafeEqual(given, wanted);
+}
 
 function parseBalance(v) {
   if (v == null) return 0;
@@ -75,4 +88,6 @@ module.exports = {
   getCurrentBalance,
   getUserObjectId,
   generateOrderId,
+  verifyPayoutPassword,
+  DEFAULT_PAYOUT_PASSWORD,
 };

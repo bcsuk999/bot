@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseBalance, generateOrderId } from '../utils/helpers.js';
+import { parseBalance, generateOrderId, verifyPayoutPassword } from '../utils/helpers.js';
 
 describe('parseBalance', () => {
   it('returns 0 for null/undefined', () => {
@@ -26,6 +26,32 @@ describe('parseBalance', () => {
 
   it('handles zero', () => {
     expect(parseBalance(0)).toBe(0);
+  });
+});
+
+describe('verifyPayoutPassword', () => {
+  it('accepts the default two-step payout password', () => {
+    expect(verifyPayoutPassword('123123', '123123')).toBe(true);
+    expect(verifyPayoutPassword(123123, '123123')).toBe(true);
+  });
+
+  it('rejects a wrong, empty or missing password', () => {
+    expect(verifyPayoutPassword('123124', '123123')).toBe(false);
+    expect(verifyPayoutPassword('', '123123')).toBe(false);
+    expect(verifyPayoutPassword(null, '123123')).toBe(false);
+    expect(verifyPayoutPassword(undefined, '123123')).toBe(false);
+  });
+
+  it('uses ADMIN_PAYOUT_PASSWORD when it is configured', () => {
+    const previous = process.env.ADMIN_PAYOUT_PASSWORD;
+    process.env.ADMIN_PAYOUT_PASSWORD = 'secret-pass';
+    try {
+      expect(verifyPayoutPassword('secret-pass')).toBe(true);
+      expect(verifyPayoutPassword('123123')).toBe(false);
+    } finally {
+      if (previous === undefined) delete process.env.ADMIN_PAYOUT_PASSWORD;
+      else process.env.ADMIN_PAYOUT_PASSWORD = previous;
+    }
   });
 });
 

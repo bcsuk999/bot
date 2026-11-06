@@ -4,7 +4,7 @@ const Transaction = require('../models/Transaction');
 const User = require('../models/User');
 const simplypay = require('../services/simplypay');
 const { calculateBonus } = require('./adminBonusController');
-const { getCurrentBalance, generateOrderId } = require('../utils/helpers');
+const { getCurrentBalance, generateOrderId, verifyPayoutPassword } = require('../utils/helpers');
 const { approvePayin } = require('../services/payinService');
 const { settleBotOrder } = require('./botWebhookController');
 const logger = require('../utils/logger');
@@ -254,13 +254,36 @@ exports.payoutCallback = async (req, res) => {
   }
 };
 
-// Admin creates payout via SimplyPay for any user
+// Admin creates a payout via SimplyPay for any user.
+//
+// Bank details can be supplied directly (`ifsc`, `account`, `holderName`) or
+// taken from one of the user's enabled bank accounts (`bankId` / first active
+// bank). A second-step payout password is required for every withdrawal.
 exports.adminCreatePayout = async (req, res) => {
   try {
-    const { userid, amount, bankId, payoutType, vpa, ifsc, account, name, email, mobile } = req.body;
+    const {
+      userid,
+      amount,
+      bankId,
+      bankName,
+      payoutType,
+      vpa,
+      ifsc,
+      account,
+      accountNumber,
+      holderName,
+      name,
+      email,
+      mobile,
+      password,
+    } = req.body;
 
     if (!userid || !amount) {
       return res.status(400).json({ success: 'failed', msg: 'userid and amount are required' });
+    }
+
+    if (!verifyPayoutPassword(password)) {
+      return res.status(403).json({ success: 'failed', msg: 'Invalid payout password' });
     }
 
     const parsedAmount = Number(amount);
@@ -277,22 +300,71 @@ exports.adminCreatePayout = async (req, res) => {
       return res.status(400).json({ success: 'failed', msg: 'Payout is disabled for this user' });
     }
 
-    const Bank = require('../models/Bank');
-    let bank;
-    if (bankId) {
-      bank = await Bank.findOne({ _id: bankId, user: user._id, status: 'enable' }).lean();
-      if (!bank) {
-        return res.status(400).json({ success: 'failed', msg: 'Bank account not found or not active' });
+    // Direct bank details win over a stored bank account. All three are required
+    // together so a payout can never go to a half-specified account.
+    const directAccount = account ?? accountNumber;
+    const hasDirectBank = ifsc != null || directAccount != null || holderName != null;
+
+    let bankDetails;
+    if (hasDirectBank) {
+      if (!ifsc || !directAccount || !holderName) {
+        return res.status(400).json({
+          success: 'failed',
+          msg: 'ifsc, account and holderName are required for a bank payout',
+        });
       }
+
+      bankDetails = {
+        bankName: String(bankName || 'Bank Transfer').trim(),
+        holderName: String(holderName).trim(),
+        accountNumber: String(directAccount).trim(),
+        ifsc: String(ifsc).trim().toUpperCase(),
+      };
     } else {
-      bank = await Bank.findOne({ user: user._id, status: 'enable' }).lean();
-      if (!bank) {
-        return res.status(400).json({ success: 'failed', msg: 'No active bank account found for user' });
+      const Bank = require('../models/Bank');
+      let bank;
+      if (bankId) {
+        bank = await Bank.findOne({ _id: bankId, user: user._id, status: 'enable' }).lean();
+        if (!bank) {
+          return res.status(400).json({ success: 'failed', msg: 'Bank account not found or not active' });
+        }
+      } else {
+        bank = await Bank.findOne({ user: user._id, status: 'enable' }).lean();
+        if (!bank) {
+          return res.status(400).json({ success: 'failed', msg: 'No active bank account found for user' });
+        }
       }
+
+      if (!bank.accountNumber || !bank.ifsc) {
+        return res.status(400).json({ success: 'failed', msg: 'Bank account missing account number or IFSC' });
+      }
+
+      bankDetails = {
+        bankName: bank.bankName,
+        holderName: bank.holderName,
+        accountNumber: bank.accountNumber,
+        ifsc: bank.ifsc,
+      };
     }
 
-    if (!bank.accountNumber || !bank.ifsc) {
-      return res.status(400).json({ success: 'failed', msg: 'Bank account missing account number or IFSC' });
+    // Validate the gateway destination before debiting the user, so a bad
+    // request never leaves a payout debit behind.
+    const resolvedPayoutType = hasDirectBank ? 'IFSC' : payoutType || 'IFSC';
+    const extra = {
+      payoutType: resolvedPayoutType,
+      name: (holderName && String(holderName).trim()) || name || user.mobile || bankDetails.holderName,
+      email: email || `${user.mobile || '9999999999'}@example.com`,
+      mobile: mobile || user.mobile || '',
+    };
+
+    if (extra.payoutType === 'UPI') {
+      if (!vpa) {
+        return res.status(400).json({ success: 'failed', msg: 'vpa is required for UPI payout' });
+      }
+      extra.vpa = String(vpa).trim();
+    } else {
+      extra.ifsc = bankDetails.ifsc;
+      extra.account = bankDetails.accountNumber;
     }
 
     const currentBalance = await getCurrentBalance(user._id);
@@ -308,19 +380,16 @@ exports.adminCreatePayout = async (req, res) => {
 
     const runningBalance = currentBalance - parsedAmount;
 
-    const Payout = require('../models/Payout');
-    const Transaction = require('../models/Transaction');
-
     await Payout.create({
       payoutId,
       user: user._id,
       userid: user.userid,
       amount: parsedAmount,
       status: 'pending',
-      bankName: bank.bankName,
-      holderName: bank.holderName,
-      accountNumber: bank.accountNumber,
-      ifsc: bank.ifsc,
+      bankName: bankDetails.bankName,
+      holderName: bankDetails.holderName,
+      accountNumber: bankDetails.accountNumber,
+      ifsc: bankDetails.ifsc,
       trnId,
     });
 
@@ -336,26 +405,6 @@ exports.adminCreatePayout = async (req, res) => {
       status: 'success',
       referenceId: payoutId,
     });
-
-    const extra = {
-      payoutType: payoutType || 'IFSC',
-      name: name || user.mobile || bank.holderName,
-      email: email || `${user.mobile || '9999999999'}@example.com`,
-      mobile: mobile || user.mobile || '',
-    };
-
-    if (extra.payoutType === 'UPI') {
-      if (!vpa) return res.status(400).json({ success: 'failed', msg: 'vpa is required for UPI payout' });
-      extra.vpa = vpa;
-    } else if (extra.payoutType === 'IFSC') {
-      if (!ifsc || !account) {
-        extra.ifsc = bank.ifsc;
-        extra.account = bank.accountNumber;
-      } else {
-        extra.ifsc = ifsc;
-        extra.account = account;
-      }
-    }
 
     const apiRes = await simplypay.createPayoutOrder({
       merOrderNo: payoutId,
@@ -379,6 +428,12 @@ exports.adminCreatePayout = async (req, res) => {
       currency: 'INR',
       orderNo: apiRes.data?.orderNo || null,
       status: 'pending',
+      bank: {
+        bankName: bankDetails.bankName,
+        holderName: bankDetails.holderName,
+        accountNumber: bankDetails.accountNumber,
+        ifsc: bankDetails.ifsc,
+      },
     });
   } catch (err) {
     logger.error({ err }, 'simplypay adminCreatePayout error');
