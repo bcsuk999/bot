@@ -344,7 +344,8 @@ async function creditGroup(order, { remark, session } = {}) {
 
 /**
  * Manual credit/debit from the admin REST API. Always a ledger row with a
- * mandatory remark and createdBy audit trail. Rejects a negative resulting balance.
+ * mandatory remark and createdBy audit trail. An admin debit may exceed the
+ * available balance on purpose, taking the group balance negative.
  *
  * The adjustment also creates the BotOrder the ledger row points at, so it gets a
  * real `B…` order id exactly like a deposit: it can be quoted, looked up with
@@ -379,10 +380,9 @@ async function adjustGroup(groupObjectId, { amount, type, remark, createdBy } = 
       }
 
       const current = await getGroupBalance(group._id, session);
+      // Admin debits are allowed to exceed the balance, so the balance may go
+      // negative (e.g. 100 - 110 = -10). There is deliberately no floor here.
       const next = type === 'debit' ? current - value : current + value;
-      if (next < 0) {
-        throw createApprovalError(`Insufficient balance. Available: ${current}`);
-      }
 
       const trnId = generateOrderId('BTXN');
       const cleanRemark = String(remark).trim();
