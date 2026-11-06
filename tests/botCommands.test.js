@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { DENY } from '../services/bot/guard.js';
-import { getGroupAccessDenial, getRegistrationDenial } from '../services/bot/commands.js';
+import {
+  ALL_COMMANDS,
+  getGroupAccessDenial,
+  getRegistrationDenial,
+  parseCommand,
+} from '../services/bot/commands.js';
 
 const config = { ownerId: 987654321 };
 
@@ -16,6 +21,16 @@ describe('group command authorization', () => {
     expect(getRegistrationDenial({ id: 123456789 }, config)).toContain('Only the bot owner');
     expect(getRegistrationDenial({}, config)).toContain('Only the bot owner');
     expect(getRegistrationDenial({ id: 987654321 }, {})).toContain('Only the bot owner');
+  });
+
+  it('registers /how, including when typed as "/how to use"', () => {
+    expect(ALL_COMMANDS.has('/how')).toBe(true);
+    expect(parseCommand('/how')).toEqual({ command: '/how', args: [], unknown: false });
+    expect(parseCommand('/how to use')).toEqual({
+      command: '/how',
+      args: ['to', 'use'],
+      unknown: false,
+    });
   });
 
   it('allows group commands for any member when the group is active', () => {

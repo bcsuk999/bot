@@ -4,7 +4,7 @@ import { helpText } from '../services/bot/handlers/help.js';
 
 describe('group command menu', () => {
   it('never advertises /reg', () => {
-    expect(GROUP_MENU.map((c) => c.command)).toEqual(['start', 'balance', 'deposit', 'status', 'daily']);
+    expect(GROUP_MENU.map((c) => c.command)).toEqual(['start', 'balance', 'deposit', 'how', 'status', 'daily']);
     expect(GROUP_MENU.some((c) => c.command === 'reg')).toBe(false);
   });
 
@@ -72,5 +72,10 @@ describe('helpText', () => {
   it('shows /info only in owner help', () => {
     expect(helpText({ isOwner: true })).toContain('/info <message>');
     expect(helpText()).not.toContain('/info');
+  });
+
+  it('shows /how in group and owner help', () => {
+    expect(helpText()).toContain('/how');
+    expect(helpText({ isOwner: true })).toContain('/how');
   });
 });

@@ -8,12 +8,13 @@ const { cmdDaily } = require('./handlers/daily');
 const { cmdStatus } = require('./handlers/status');
 const { cmdStart } = require('./handlers/start');
 const { cmdInfo } = require('./handlers/info');
+const { cmdHow } = require('./handlers/how');
 const { sendProcessingMessage, sendProcessingReply } = require('./reply');
 const logger = require('../../utils/logger');
 
 // Commands that need a registered group with active status.
 const GROUP_COMMANDS = new Set(['/balance', '/deposit', '/daily', '/status']);
-const ALL_COMMANDS = new Set(['/start', '/reg', '/balance', '/deposit', '/daily', '/status', '/info']);
+const ALL_COMMANDS = new Set(['/start', '/reg', '/balance', '/deposit', '/daily', '/status', '/info', '/how']);
 const REG_OWNER_ONLY = 'Only the bot owner can register a group. Ask the owner to run /reg here.';
 
 // The "/" menus Telegram renders per chat scope (Bot API setMyCommands).
@@ -23,6 +24,7 @@ const GROUP_MENU = [
   { command: 'start', description: 'Show bot info and command list' },
   { command: 'balance', description: 'Show this group balance' },
   { command: 'deposit', description: 'Create a deposit: /deposit <amount>' },
+  { command: 'how', description: 'How to create a deposit and use the bot' },
   { command: 'status', description: 'Check a deposit: /status <order id>' },
   { command: 'daily', description: 'Show deposit success rates' },
 ];
@@ -43,6 +45,7 @@ const OWNER_MENU = [
   { command: 'start', description: 'Show bot info and command list' },
   { command: 'reg', description: 'Register a group (run it inside the group)' },
   { command: 'info', description: 'Send a message to all active groups' },
+  { command: 'how', description: 'How to create a deposit and use the bot' },
 ];
 
 /**
@@ -137,6 +140,9 @@ async function handleMessage(msg, client, config) {
         return reply('Unable to send the info broadcast. Please try again.');
       }
     }
+    if (command === '/how') {
+      return reply(cmdHow().text);
+    }
     return reply('Group commands must be run inside an authorised group.');
   }
 
@@ -180,6 +186,9 @@ async function handleMessage(msg, client, config) {
         break;
       case '/status':
         result = await cmdStatus(ctx);
+        break;
+      case '/how':
+        result = cmdHow();
         break;
       default:
         return reply(helpText());

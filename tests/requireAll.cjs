@@ -25,6 +25,7 @@ const MODULES = [
   'services/bot/handlers/reg',
   'services/bot/handlers/balance',
   'services/bot/handlers/deposit',
+  'services/bot/handlers/how',
   'services/bot/handlers/daily',
   'services/bot/handlers/status',
   'services/bot/handlers/start',
