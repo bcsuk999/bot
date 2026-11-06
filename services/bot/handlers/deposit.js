@@ -2,9 +2,12 @@ const BotOrder = require('../../../models/BotOrder');
 const simplypay = require('../../simplypay');
 const { generateOrderId } = require('../../../utils/helpers');
 const { parseUpiLink, canBeButtonUrl } = require('../upilink');
-const { formatInr, formatAmount, escapeHtml } = require('../format');
+const { formatInr, formatAmount, formatIst, escapeHtml } = require('../format');
 const { alertOwner } = require('../guard');
 const logger = require('../../../utils/logger');
+
+// Every deposit order is shown as expiring 20 minutes after it was created.
+const DEPOSIT_EXPIRY_MINUTES = 20;
 
 /**
  * Parse and bounds-check a raw /deposit argument.
@@ -117,7 +120,13 @@ async function cmdDeposit(ctx) {
   // figure the UPI app will prefill. Fall back to the requested amount only when
   // the link has no usable `am`.
   const payAmount = parsedLink.upiAmount ?? amount;
-  const reply = buildDepositReply({ orderId, amount: payAmount, upiId: parsedLink.valid ? parsedLink.upiId : null });
+  const expiresAt = new Date(new Date(order.createdAt).getTime() + DEPOSIT_EXPIRY_MINUTES * 60 * 1000);
+  const reply = buildDepositReply({
+    orderId,
+    amount: payAmount,
+    upiId: parsedLink.valid ? parsedLink.upiId : null,
+    expiresAt,
+  });
 
   // The gateway payment link is the only way a payment gets tied back to this
   // order, so it stays as an action button even though the message body carries
@@ -132,19 +141,26 @@ async function cmdDeposit(ctx) {
 }
 
 /**
- * The /deposit reply: order id, amount to pay and UPI id, nothing else.
- * No emoji, no status line - it should read like a payment slip, not a bot.
+ * The /deposit reply: order id, amount to pay, UPI id, expiry and a warning.
  * `amount` is the deep-link amount (what the UPI app prefills), not necessarily
  * the amount typed after /deposit. Amount and UPI id get copy buttons; the order
  * id is only rendered as <code> (tap to copy).
  *
  * @returns {{ text: string, options: object }}
  */
-function buildDepositReply({ orderId, amount, upiId }) {
+function buildDepositReply({ orderId, amount, upiId, expiresAt }) {
+  const expiry =
+    expiresAt instanceof Date && !Number.isNaN(expiresAt.getTime())
+      ? expiresAt
+      : new Date(Date.now() + DEPOSIT_EXPIRY_MINUTES * 60 * 1000);
+
   const text = [
     `Order ID: <code>${escapeHtml(orderId)}</code>`,
     `Amount to pay: ${formatInr(amount)}`,
     `UPI ID: ${upiId ? `<code>${escapeHtml(upiId)}</code>` : 'unavailable'}`,
+    `Expires at: ${formatIst(expiry)} IST (${DEPOSIT_EXPIRY_MINUTES} min)`,
+    '',
+    '⚠️ Do not use the same order for multiple payments.',
   ].join('\n');
 
   const keyboard = [
@@ -161,5 +177,5 @@ function buildDepositReply({ orderId, amount, upiId }) {
   };
 }
 
-module.exports = { cmdDeposit, parseDepositAmount, buildDepositReply };
+module.exports = { cmdDeposit, parseDepositAmount, buildDepositReply, DEPOSIT_EXPIRY_MINUTES };
 

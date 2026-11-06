@@ -1,28 +1,41 @@
 import { describe, it, expect } from 'vitest';
 import { buildDepositReply } from '../services/bot/handlers/deposit.js';
 
-const base = { orderId: 'B20260928093925967924200', amount: 400, upiId: 'merchant@paytm' };
+const base = {
+  orderId: 'B20260928093925967924200',
+  amount: 400,
+  upiId: 'merchant@paytm',
+  // 14:35 IST, exactly 20 minutes after the order was created.
+  expiresAt: new Date('2026-11-06T09:05:00.000Z'),
+};
 
 function buttons(reply) {
   return reply.options.reply_markup.inline_keyboard.flat();
 }
 
 describe('buildDepositReply', () => {
-  it('shows only order id, amount to pay and UPI id', () => {
+  it('shows order id, amount to pay, UPI id, expiry and the warning', () => {
     const reply = buildDepositReply(base);
     expect(reply.text).toBe(
       [
         'Order ID: <code>B20260928093925967924200</code>',
         'Amount to pay: ₹400.00',
         'UPI ID: <code>merchant@paytm</code>',
+        'Expires at: 06/11/2026, 14:35 IST (20 min)',
+        '',
+        '⚠️ Do not use the same order for multiple payments.',
       ].join('\n')
     );
   });
 
-  it('uses no emoji or bot-style header', () => {
+  it('uses no bot-style header', () => {
     const reply = buildDepositReply(base);
-    expect(reply.text).not.toMatch(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u);
     expect(reply.text).not.toMatch(/deposit requested/i);
+  });
+
+  it('defaults the expiry to 20 minutes from now', () => {
+    const reply = buildDepositReply({ ...base, expiresAt: undefined });
+    expect(reply.text).toContain('(20 min)');
   });
 
   it('has copy buttons for amount and UPI id, but not for the order id', () => {
