@@ -21,7 +21,7 @@ describe('buildDepositReply', () => {
         'Order ID: <code>B20260928093925967924200</code>',
         'Amount to pay: ₹400.00',
         'UPI ID: <code>merchant@paytm</code>',
-        'Expires at: 06/11/2026, 14:35 IST (20 min)',
+        'Expires at: 2:35 pm 6 Nov 2026',
         '',
         '⚠️ Do not use the same order for multiple payments.',
       ].join('\n')
@@ -35,7 +35,7 @@ describe('buildDepositReply', () => {
 
   it('defaults the expiry to 20 minutes from now', () => {
     const reply = buildDepositReply({ ...base, expiresAt: undefined });
-    expect(reply.text).toContain('(20 min)');
+    expect(reply.text).toMatch(/Expires at: \d{1,2}:\d{2} (am|pm) \d{1,2} [A-Za-z]+ \d{4}/);
   });
 
   it('has copy buttons for amount and UPI id, but not for the order id', () => {

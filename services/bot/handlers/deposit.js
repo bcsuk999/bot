@@ -1,8 +1,8 @@
 const BotOrder = require('../../../models/BotOrder');
 const simplypay = require('../../simplypay');
 const { generateOrderId } = require('../../../utils/helpers');
-const { parseUpiLink, canBeButtonUrl } = require('../upilink');
-const { formatInr, formatAmount, formatIst, escapeHtml } = require('../format');
+const { parseUpiLink } = require('../upilink');
+const { formatInr, formatAmount, formatExpiryIst, escapeHtml } = require('../format');
 const { alertOwner } = require('../guard');
 const logger = require('../../../utils/logger');
 
@@ -128,14 +128,6 @@ async function cmdDeposit(ctx) {
     expiresAt,
   });
 
-  // The gateway payment link is the only way a payment gets tied back to this
-  // order, so it stays as an action button even though the message body carries
-  // just the three payment details.
-  const buttonUrl = canBeButtonUrl(deepLink) ? deepLink : canBeButtonUrl(paymentLink) ? paymentLink : null;
-  if (buttonUrl) {
-    reply.options.reply_markup.inline_keyboard.push([{ text: 'Pay now', url: buttonUrl }]);
-  }
-
   logger.info({ groupId: group.groupId, orderId, amount, upiId: order.upiId }, 'bot: /deposit created');
   return reply;
 }
@@ -158,7 +150,7 @@ function buildDepositReply({ orderId, amount, upiId, expiresAt }) {
     `Order ID: <code>${escapeHtml(orderId)}</code>`,
     `Amount to pay: ${formatInr(amount)}`,
     `UPI ID: ${upiId ? `<code>${escapeHtml(upiId)}</code>` : 'unavailable'}`,
-    `Expires at: ${formatIst(expiry)} IST (${DEPOSIT_EXPIRY_MINUTES} min)`,
+    `Expires at: ${formatExpiryIst(expiry)}`,
     '',
     '⚠️ Do not use the same order for multiple payments.',
   ].join('\n');

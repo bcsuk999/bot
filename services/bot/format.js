@@ -27,6 +27,24 @@ function formatIst(date = new Date()) {
   }).format(d);
 }
 
+// 2026-09-16T09:55Z -> "3:25 pm 16 Sept 2026" (IST)
+function formatExpiryIst(date = new Date()) {
+  if (!date) return '-';
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return '-';
+  const parts = new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).formatToParts(d);
+  const get = (type) => parts.find((p) => p.type === type)?.value || '';
+  return `${get('hour')}:${get('minute')} ${get('dayPeriod')} ${get('day')} ${get('month')} ${get('year')}`;
+}
+
 // 12500 -> "12,500.00"
 function formatAmount(value) {
   const n = Number(value);
@@ -98,6 +116,7 @@ module.exports = {
   IST_OFFSET_MIN,
   startOfIstDay,
   formatIst,
+  formatExpiryIst,
   formatAmount,
   formatInr,
   escapeHtml,
