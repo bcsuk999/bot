@@ -32,7 +32,6 @@ const MODULES = [
   'services/botGroupService',
   'services/simplypay',
   'models/TelegramGroup',
-  'models/BotLock',
   'models/BotOrder',
   'models/BotTransaction',
   'controllers/botController',
