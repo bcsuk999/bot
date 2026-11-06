@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildDepositReply } from '../services/bot/handlers/deposit.js';
+import {
+  buildDepositReply,
+  scheduleDepositExpiryEdit,
+  EXPIRED_NOTICE_TEXT,
+} from '../services/bot/handlers/deposit.js';
 
 const base = {
   orderId: 'B20260928093925967924200',
@@ -21,7 +25,7 @@ describe('buildDepositReply', () => {
         'Order ID: <code>B20260928093925967924200</code>',
         'Amount to pay: ₹400.00',
         'UPI ID: <code>merchant@paytm</code>',
-        'Expires at: 2:35 pm 6 Nov 2026',
+        'Expires at: 2:35 pm 6 Nov 2026 [20 minutes]',
         '',
         '⚠️ Do not use the same order for multiple payments.',
       ].join('\n')
@@ -64,5 +68,24 @@ describe('buildDepositReply', () => {
     expect(reply.options.parse_mode).toBe('HTML');
     expect(reply.text).toContain('Amount to pay: ₹400.50');
     expect(buttons(reply)[0].copy_text.text).toBe('400.50');
+  });
+});
+
+describe('deposit expiry notice', () => {
+  it('uses the exact expired warning', () => {
+    expect(EXPIRED_NOTICE_TEXT).toBe('⚠️ order expired create new for further payment');
+  });
+
+  it('does not schedule anything without a sent message or client', () => {
+    expect(scheduleDepositExpiryEdit({})).toBeNull();
+    expect(
+      scheduleDepositExpiryEdit({
+        client: {},
+        chatId: 1,
+        message: {},
+        orderId: 'B1',
+        expiresAt: new Date(),
+      })
+    ).toBeNull();
   });
 });

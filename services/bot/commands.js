@@ -3,7 +3,7 @@ const { enforce, DENY, isOwner } = require('./guard');
 const { helpText } = require('./handlers/help');
 const { cmdReg } = require('./handlers/reg');
 const { cmdBalance } = require('./handlers/balance');
-const { cmdDeposit } = require('./handlers/deposit');
+const { cmdDeposit, scheduleDepositExpiryEdit } = require('./handlers/deposit');
 const { cmdDaily } = require('./handlers/daily');
 const { cmdStatus } = require('./handlers/status');
 const { cmdStart } = require('./handlers/start');
@@ -203,7 +203,21 @@ async function handleMessage(msg, client, config) {
     await alertOwner(ctx, result.reason || 'blocked', config, client);
   }
 
-  return reply(result.text, result.options || {});
+  const sent = await reply(result.text, result.options || {});
+
+  // The deposit slip is edited to its expired notice after 20 minutes. This is a
+  // Telegram message update only - the order's real status is never changed.
+  if (result?.expiresAt) {
+    scheduleDepositExpiryEdit({
+      client,
+      chatId: chat.id,
+      message: sent,
+      orderId: result.orderId,
+      expiresAt: result.expiresAt,
+    });
+  }
+
+  return sent;
 }
 
 function register(client, config) {

@@ -9,6 +9,11 @@ const logger = require('../../../utils/logger');
 // Every deposit order is shown as expiring 20 minutes after it was created.
 const DEPOSIT_EXPIRY_MINUTES = 20;
 
+// Shown by editing the original deposit slip once the 20-minute window passes.
+// This is a message update only: the order keeps its real status and a late
+// gateway payment can still credit it.
+const EXPIRED_NOTICE_TEXT = '⚠️ order expired create new for further payment';
+
 /**
  * Parse and bounds-check a raw /deposit argument.
  * Returns { ok: true, amount } or { ok: false, reason }.
@@ -129,7 +134,7 @@ async function cmdDeposit(ctx) {
   });
 
   logger.info({ groupId: group.groupId, orderId, amount, upiId: order.upiId }, 'bot: /deposit created');
-  return reply;
+  return { ...reply, orderId, expiresAt };
 }
 
 /**
@@ -150,7 +155,7 @@ function buildDepositReply({ orderId, amount, upiId, expiresAt }) {
     `Order ID: <code>${escapeHtml(orderId)}</code>`,
     `Amount to pay: ${formatInr(amount)}`,
     `UPI ID: ${upiId ? `<code>${escapeHtml(upiId)}</code>` : 'unavailable'}`,
-    `Expires at: ${formatExpiryIst(expiry)}`,
+    `Expires at: ${formatExpiryIst(expiry)} [${DEPOSIT_EXPIRY_MINUTES} minutes]`,
     '',
     '⚠️ Do not use the same order for multiple payments.',
   ].join('\n');
@@ -169,5 +174,42 @@ function buildDepositReply({ orderId, amount, upiId, expiresAt }) {
   };
 }
 
-module.exports = { cmdDeposit, parseDepositAmount, buildDepositReply, DEPOSIT_EXPIRY_MINUTES };
+/**
+ * Best-effort: edit the original deposit slip once its 20-minute window passes.
+ * The order is only read (never written), so its real status is untouched and a
+ * late payment can still be credited by the gateway webhook. If the process
+ * restarts before the timer fires the slip simply stays as it was.
+ */
+function scheduleDepositExpiryEdit({ client, chatId, message, orderId, expiresAt }) {
+  const messageId = message?.message_id;
+  const dueAt = expiresAt instanceof Date ? expiresAt.getTime() : NaN;
+  if (!client || messageId == null || Number.isNaN(dueAt)) return null;
+
+  const timer = setTimeout(async () => {
+    try {
+      const order = await BotOrder.findOne({ orderId }).select('status').lean();
+      if (!order || order.status !== 'pending') return;
+
+      await client.editMessageText(EXPIRED_NOTICE_TEXT, {
+        chat_id: chatId,
+        message_id: messageId,
+        reply_markup: { inline_keyboard: [] },
+      });
+    } catch (err) {
+      logger.warn({ err, orderId }, 'bot: failed to mark deposit slip expired');
+    }
+  }, Math.max(0, dueAt - Date.now()));
+
+  if (typeof timer.unref === 'function') timer.unref();
+  return timer;
+}
+
+module.exports = {
+  cmdDeposit,
+  parseDepositAmount,
+  buildDepositReply,
+  scheduleDepositExpiryEdit,
+  DEPOSIT_EXPIRY_MINUTES,
+  EXPIRED_NOTICE_TEXT,
+};
 
