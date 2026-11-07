@@ -73,6 +73,13 @@ const botOrderSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    // Gateway-side order id for non-SimplyPay gateways (currently OSPAY's
+    // `order_code`). Kept separate so existing SimplyPay rows are untouched.
+    gatewayOrderNo: {
+      type: String,
+      default: null,
+      index: true,
+    },
     // Set once the order is credited - links to the BotTransaction row
     trnId: {
       type: String,

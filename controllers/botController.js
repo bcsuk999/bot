@@ -38,6 +38,7 @@ function serializeOrder(o) {
     simplypayOrderNo: o.simplypayOrderNo,
     // 'MANUAL' marks an admin adjustment order; gateway deposits are 'SPAY'.
     network: o.network,
+    gatewayOrderNo: o.gatewayOrderNo || null,
     // 'credit' for deposits and manual credits, 'debit' for a manual withdrawal.
     direction: o.direction || 'credit',
     trnId: o.trnId,

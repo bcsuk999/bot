@@ -258,6 +258,35 @@ UPI ID: merchant@paytm
 
 If `upiId` cannot be parsed, the line reads `UPI ID: unavailable`, its copy button is omitted, and the keyboard falls back to `data.params.paymentLink` for the `Pay now` button.
 
+### 6.4.1 `/osd <amount>` — owner-only OSPAY deposit
+
+A second collection gateway for the bot owner only. It creates the **same `BotOrder` record and credits the same group wallet** as `/d`; only `network: 'OSPAY'` and the gateway call differ.
+
+- **Owner only**: any other sender gets `Only the bot owner can use this command.`
+- Group only, and the group must be registered/active like `/d`.
+- **Whole-number amounts only** (`/osd 500`). OSPAY explicitly forbids decimals, so `/osd 500.50` is rejected.
+- Flow: create `BotOrder` (`network: 'OSPAY'`, `status: 'pending'`) → `ospay.createPaymentOrder({ orderId, amount })` → persist `upiId` (`upi`), `paymentLink` (`data`), `gatewayOrderNo` (`order_code`) → reply with the normal deposit slip plus a `💳 Pay now` URL button.
+- The 20-minute expiry edit and the `status : order completed 🟢` success edit work exactly as they do for `/d`.
+- Gateway error: order is marked `failed`, the owner is alerted, and the group gets a plain error reply.
+
+**Webhook** — `POST /webhook/ospay/bot`, `application/x-www-form-urlencoded`.
+
+1. Verify `sign` with `OSPAY_MERCHANT_KEY` using the doc's `UPPERCASE(md5(sorted k=v & key=merchant_key))` over `mer_id, order_id, status, amount, realpay`.
+2. `status: OK` → atomic `settleSuccess()` → `BotTransaction` credit → group totals → success notice (`PAYIN🔻`) → completed slip edit.
+3. `status: error` → mark `failed`, increment `totalFailed`, send the failed notice.
+4. Reply with the literal text `ok`; anything else makes OSPAY retry. A duplicate callback is a no-op because the order is claimed atomically.
+
+Environment:
+
+```env
+OSPAY_MERCHANT_ID=
+OSPAY_MERCHANT_KEY=
+OSPAY_BASE_URL=https://ospayi.top
+OSPAY_GATEWAY=1001
+OSPAY_CALLBACK_URL=https://<domain>/
+OSPAY_NOTIFY_URL=https://<domain>/webhook/ospay/bot
+```
+
 ### 6.5 `/daily` — that group's success rate
 
 Reports the deposit success rate of the group it is invoked in across four windows, newest first: the last 10 minutes, 30 minutes, 1 hour, and today (IST). Visible to every member of the registered group. All four lines are always shown, so there is no `today` / `all` argument anymore.
@@ -503,6 +532,7 @@ services/bot/upilink.js         parseUpiLink()
 services/bot/handlers/reg.js
 services/bot/handlers/balance.js
 services/bot/handlers/deposit.js
+services/bot/handlers/ospayDeposit.js
 services/bot/handlers/status.js
 services/bot/handlers/daily.js
 services/bot/stats.js           getGroupStats() aggregation
@@ -512,8 +542,11 @@ services/botGroupService.js     getGroupBalance, getGroupBalances, creditGroup, 
                                resolveGroup, findGroupForFilter, backfillGroupUids
                                (mirrors services/payinService.js placement)
 
+services/ospay.js               OSPAY signature + create/query/balance calls
+
 controllers/botController.js         REST API
-controllers/botWebhookController.js  POST /webhook/simplypay/bot
+controllers/botWebhookController.js  POST /webhook/simplypay/bot, OSPAY settlement
+controllers/ospayController.js       POST /webhook/ospay/bot
 routes/bot.js                        /api/bot
 ```
 

@@ -69,6 +69,24 @@ describe('buildDepositReply', () => {
     expect(reply.text).toContain('Amount to pay: ₹400.50');
     expect(buttons(reply)[0].copy_text.text).toBe('400.50');
   });
+
+  it('adds a Pay now button when a gateway payment URL is supplied', () => {
+    const reply = buildDepositReply({ ...base, payUrl: 'https://ospayi.top/pay/abc' });
+    expect(buttons(reply)[0]).toEqual({
+      text: '💳 Pay now',
+      url: 'https://ospayi.top/pay/abc',
+    });
+  });
+
+  it('ignores a non-http payment URL', () => {
+    const reply = buildDepositReply({ ...base, payUrl: 'javascript:alert(1)' });
+    expect(buttons(reply).some((b) => b.text === '💳 Pay now')).toBe(false);
+  });
+
+  it('uses an explicit copy amount for whole-number gateways', () => {
+    const reply = buildDepositReply({ ...base, amount: 500, copyAmount: 500 });
+    expect(buttons(reply).find((b) => b.text === 'Copy amount').copy_text.text).toBe('500');
+  });
 });
 
 describe('completed deposit slip', () => {

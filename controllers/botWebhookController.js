@@ -98,6 +98,8 @@ async function markDepositSlipCompleted(order, credited) {
       upiId: order.upiId || null,
       expiresAt,
       completed: true,
+      payUrl: order.paymentLink || null,
+      copyAmount: order.slipAmount ?? credited,
     });
 
     await client.editMessageText(slip.text, {
@@ -230,6 +232,45 @@ async function settleBotOrder(merOrderNo, orderStatus) {
 }
 
 /**
+ * Apply an OSPAY callback status to a bot order.
+ *
+ * OSPAY uses string statuses: `OK` for a successful collection and `error` for
+ * a failed one. Everything else is ignored. The claim/credit path is the same
+ * atomic path SimplyPay uses, so a duplicate callback cannot double-credit.
+ */
+async function settleOspayOrder(orderId, status) {
+  const peek = await BotOrder.findOne({ orderId }).select('_id groupId orderId status').lean();
+  if (!peek) return { ok: true, action: 'order_not_found' };
+  if (peek.status !== 'pending') return { ok: true, action: 'already_' + peek.status };
+
+  const normalized = String(status || '').trim().toUpperCase();
+
+  if (normalized === 'OK') {
+    const settled = await settleSuccess(orderId, 'OK', {
+      orderRemark: 'OSPAY status: OK',
+      transactionRemark: `Group deposit ${orderId}`,
+    });
+    if (settled.action !== 'credited') return { ok: true, action: settled.action };
+    await notifySuccess(settled.order, settled.credited);
+    return { ok: true, action: 'credited', trnId: settled.trnId, balance: settled.balance };
+  }
+
+  if (normalized === 'ERROR') {
+    const order = await claimOrder(orderId, {
+      status: 'failed',
+      remark: 'OSPAY status: error',
+    });
+    if (!order) return { ok: true, action: 'race_lost' };
+    await TelegramGroup.updateOne({ groupId: order.groupId }, { $inc: { totalFailed: 1 } });
+    await notifyFailed(order, 'OSPAY error');
+    return { ok: true, action: 'failed' };
+  }
+
+  logger.debug({ orderId, status }, 'bot: OSPAY callback status not actionable');
+  return { ok: true, action: 'no_op' };
+}
+
+/**
  * Settle a SimplyPay webhook for a group deposit.
  * Always responds 200 - a non-2xx makes the gateway retry.
  */
@@ -263,6 +304,7 @@ module.exports = {
   botPayinCallback,
   handlePayinCallback,
   settleBotOrder,
+  settleOspayOrder,
   claimOrder,
   settleSuccess,
   buildSuccessNotice,
