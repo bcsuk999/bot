@@ -214,6 +214,7 @@ async function handleMessage(msg, client, config) {
       message: sent,
       orderId: result.orderId,
       expiresAt: result.expiresAt,
+      expiredReply: result.expiredReply,
     });
   }
 

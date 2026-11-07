@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildDepositReply,
   scheduleDepositExpiryEdit,
-  EXPIRED_NOTICE_TEXT,
+  EXPIRED_LINE_TEXT,
 } from '../services/bot/handlers/deposit.js';
 
 const base = {
@@ -72,8 +72,24 @@ describe('buildDepositReply', () => {
 });
 
 describe('deposit expiry notice', () => {
-  it('uses the exact expired warning', () => {
-    expect(EXPIRED_NOTICE_TEXT).toBe('⚠️ order expired create new for further payment');
+  it('swaps only the expiry line to the expired label', () => {
+    const reply = buildDepositReply({ ...base, expired: true });
+    expect(reply.text).toBe(
+      [
+        'Order ID: <code>B20260928093925967924200</code>',
+        'Amount to pay: ₹400.00',
+        'UPI ID: <code>merchant@paytm</code>',
+        EXPIRED_LINE_TEXT,
+        '',
+        '⚠️ Do not use the same order for multiple payments.',
+      ].join('\n')
+    );
+    expect(EXPIRED_LINE_TEXT).toBe('Expires at: already expired 🔴');
+  });
+
+  it('keeps the copy buttons when expired', () => {
+    const reply = buildDepositReply({ ...base, expired: true });
+    expect(buttons(reply).map((b) => b.copy_text.text)).toEqual(['400.00', 'merchant@paytm']);
   });
 
   it('does not schedule anything without a sent message or client', () => {
@@ -85,6 +101,7 @@ describe('deposit expiry notice', () => {
         message: {},
         orderId: 'B1',
         expiresAt: new Date(),
+        expiredReply: buildDepositReply({ ...base, expired: true }),
       })
     ).toBeNull();
   });

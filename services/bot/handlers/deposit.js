@@ -9,10 +9,9 @@ const logger = require('../../../utils/logger');
 // Every deposit order is shown as expiring 20 minutes after it was created.
 const DEPOSIT_EXPIRY_MINUTES = 20;
 
-// Shown by editing the original deposit slip once the 20-minute window passes.
-// This is a message update only: the order keeps its real status and a late
-// gateway payment can still credit it.
-const EXPIRED_NOTICE_TEXT = '⚠️ order expired create new for further payment';
+// Once the 20-minute window passes only the expiry line is swapped for this.
+// The rest of the slip (order id, amount, UPI id, warning, buttons) stays intact.
+const EXPIRED_LINE_TEXT = 'Expires at: already expired 🔴';
 
 /**
  * Parse and bounds-check a raw /deposit argument.
@@ -132,9 +131,16 @@ async function cmdDeposit(ctx) {
     upiId: parsedLink.valid ? parsedLink.upiId : null,
     expiresAt,
   });
+  const expiredReply = buildDepositReply({
+    orderId,
+    amount: payAmount,
+    upiId: parsedLink.valid ? parsedLink.upiId : null,
+    expiresAt,
+    expired: true,
+  });
 
   logger.info({ groupId: group.groupId, orderId, amount, upiId: order.upiId }, 'bot: /deposit created');
-  return { ...reply, orderId, expiresAt };
+  return { ...reply, orderId, expiresAt, expiredReply };
 }
 
 /**
@@ -145,17 +151,21 @@ async function cmdDeposit(ctx) {
  *
  * @returns {{ text: string, options: object }}
  */
-function buildDepositReply({ orderId, amount, upiId, expiresAt }) {
+function buildDepositReply({ orderId, amount, upiId, expiresAt, expired = false }) {
   const expiry =
     expiresAt instanceof Date && !Number.isNaN(expiresAt.getTime())
       ? expiresAt
       : new Date(Date.now() + DEPOSIT_EXPIRY_MINUTES * 60 * 1000);
 
+  const expiryLine = expired
+    ? EXPIRED_LINE_TEXT
+    : `Expires at: ${formatExpiryIst(expiry)} [${DEPOSIT_EXPIRY_MINUTES} minutes]`;
+
   const text = [
     `Order ID: <code>${escapeHtml(orderId)}</code>`,
     `Amount to pay: ${formatInr(amount)}`,
     `UPI ID: ${upiId ? `<code>${escapeHtml(upiId)}</code>` : 'unavailable'}`,
-    `Expires at: ${formatExpiryIst(expiry)} [${DEPOSIT_EXPIRY_MINUTES} minutes]`,
+    expiryLine,
     '',
     '⚠️ Do not use the same order for multiple payments.',
   ].join('\n');
@@ -175,25 +185,26 @@ function buildDepositReply({ orderId, amount, upiId, expiresAt }) {
 }
 
 /**
- * Best-effort: edit the original deposit slip once its 20-minute window passes.
- * The order is only read (never written), so its real status is untouched and a
- * late payment can still be credited by the gateway webhook. If the process
- * restarts before the timer fires the slip simply stays as it was.
+ * Best-effort: swap the expiry line of the original deposit slip once its
+ * 20-minute window passes. Only the expiry line changes - the rest of the slip
+ * stays exactly as sent. The order is only read (never written), so its real
+ * status is untouched and a late payment can still be credited by the webhook.
+ * If the process restarts before the timer fires the slip simply stays as it was.
  */
-function scheduleDepositExpiryEdit({ client, chatId, message, orderId, expiresAt }) {
+function scheduleDepositExpiryEdit({ client, chatId, message, orderId, expiresAt, expiredReply }) {
   const messageId = message?.message_id;
   const dueAt = expiresAt instanceof Date ? expiresAt.getTime() : NaN;
-  if (!client || messageId == null || Number.isNaN(dueAt)) return null;
+  if (!client || messageId == null || Number.isNaN(dueAt) || !expiredReply) return null;
 
   const timer = setTimeout(async () => {
     try {
       const order = await BotOrder.findOne({ orderId }).select('status').lean();
       if (!order || order.status !== 'pending') return;
 
-      await client.editMessageText(EXPIRED_NOTICE_TEXT, {
+      await client.editMessageText(expiredReply.text, {
         chat_id: chatId,
         message_id: messageId,
-        reply_markup: { inline_keyboard: [] },
+        ...expiredReply.options,
       });
     } catch (err) {
       logger.warn({ err, orderId }, 'bot: failed to mark deposit slip expired');
@@ -210,6 +221,6 @@ module.exports = {
   buildDepositReply,
   scheduleDepositExpiryEdit,
   DEPOSIT_EXPIRY_MINUTES,
-  EXPIRED_NOTICE_TEXT,
+  EXPIRED_LINE_TEXT,
 };
 
