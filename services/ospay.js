@@ -58,7 +58,7 @@ function generateSign(params = {}, merchantKey = cfg().merchantKey) {
   const sign = crypto.createHash('md5').update(stringToSign, 'utf8').digest('hex').toUpperCase();
   // Never log merchantKey or the full stringToSign: only the signed field names
   // and the resulting sign, which is enough to debug a mismatch.
-  logger.debug(
+  logger.info(
     {
       fields: pairs.map((pair) => pair.split('=')[0]),
       sign,
