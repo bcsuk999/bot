@@ -4,7 +4,7 @@ const HOW_TO_USE = [
   'HOW TO USE THE DEPOSIT BOT',
   '',
   '1) Create an order',
-  'Send: /deposit 500',
+  'Send: /d 500',
   '',
   '2) Get the payment details',
   'The bot will reply with:',
@@ -32,7 +32,7 @@ const HOW_TO_USE = [
   'COMMANDS',
   '/start — Bot information and command list',
   '/balance — Group wallet balance',
-  '/deposit <amount> — Create a deposit order',
+  '/d <amount> — Create a deposit order',
   '/status <order id> — Check a deposit status',
   '/daily — Deposit success rate (10m / 30m / 1h / today)',
 ].join('\n');

@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-A Telegram bot that treats each Telegram **group as a wallet/member**. The bot owner registers a group with `/reg`; any member of an active registered group can create deposits via `/deposit` using the existing SimplyPay INR deep link and query that group's balance and deposit statistics.
+A Telegram bot that treats each Telegram **group as a wallet/member**. The bot owner registers a group with `/reg`; any member of an active registered group can create deposits via `/d` using the existing SimplyPay INR deep link and query that group's balance and deposit statistics.
 
 ### 1.1 The identity rule
 
@@ -24,7 +24,7 @@ A Telegram bot that treats each Telegram **group as a wallet/member**. The bot o
 |---|---|
 | G1 | The bot owner registers a group via `/reg`, which immediately receives a group id + balance |
 | G2 | Any member of a registered group can read that group's balance via `/balance` |
-| G3 | Any member can create a deposit via `/deposit <amount>` and get a UPI id + amount back from the SimplyPay deep link |
+| G3 | Any member can create a deposit via `/d <amount>` and get a UPI id + amount back from the SimplyPay deep link |
 | G4 | Per-group daily stats (`/daily`): that group's total orders, total amount, success, pending, failed — today (IST) as the headline, all-time as context |
 | G5 | Any member can check one order with `/status <order id>`: order id, amount, status, created time, and the success time once credited |
 | G6 | Group commands are available to any member of that registered, active group and always operate on that group's data; private DMs from strangers are denied |
@@ -168,7 +168,7 @@ All handlers live in `services/bot/handlers/`. Every command runs through the gu
 
 | Scope | Commands shown |
 |---|---|
-| `all_group_chats` | `/start`, `/balance`, `/deposit`, `/status`, `/daily` — **`/reg` is not listed** |
+| `all_group_chats` | `/start`, `/balance`, `/d`, `/status`, `/daily` — **`/reg` is not listed** |
 | `chat` = `TELEGRAM_OWNER_ID` | `/start`, `/reg`, `/info` |
 
 So in any group, typing `/` lists only the member commands; a normal user is never shown owner commands. `/reg` appears only in the owner's private chat, where it replies `Run /reg inside the group you want to register.` The owner must then run `/reg` in the target group; other members cannot register groups. `/info <message>` is also owner-DM-only and broadcasts the supplied text to every active registered group, reporting successful and failed deliveries. The group help block omits owner commands; only the owner's DM help includes them. `setMyCommands` is best-effort: a failure (e.g. the owner has never started the bot, so the chat does not exist yet) is logged and never blocks startup, and re-publishing runs on the next restart.
@@ -206,7 +206,7 @@ Registered by: @adminuser (987654321)
 
 Commands:
 /balance - Check this group balance
-/deposit <amount> - Create a deposit
+/d <amount> - Create a deposit
 /daily   - Deposit success rate (10m / 30m / 1h / today)
 ```
 
@@ -228,9 +228,9 @@ Frozen: 0.00
 
 `Balance` is the live ledger balance (`balanceAfter` of the newest `status: 'success'` row). `Deposit` is the money that came in **today** (IST) — the `success.amount` of today's orders where `direction !== 'debit'`. A manual **credit** counts, a manual **debit** never does: it is money leaving the group, so it must not read as a deposit. `Frozen` is a fixed `0.00`: nothing in this system ever holds funds back, so it is not queried. Amounts are plain numbers with two decimals and no `₹`, unlike the `/daily` lines.
 
-### 6.4 `/deposit <amount>` — create a deposit
+### 6.4 `/d <amount>` — create a deposit
 
-Argument parsing: `/deposit 400`, `/deposit 400.50`. Currency symbols, commas, and `/deposit` with no value are rejected with a usage hint.
+Argument parsing: `/d 400`, `/d 400.50`. Currency symbols, commas, and `/d` with no value are rejected with a usage hint.
 
 1. Guard passes.
 2. `amount = Number(raw)`. Reject if `!Number.isFinite(amount) || amount <= 0` → `Invalid amount.`
@@ -252,7 +252,7 @@ UPI ID: merchant@paytm
 [ Pay now ]     ← inline url button, only when the gateway returns an http(s) link
 ```
 
-`Amount to pay` is the **deep-link amount** (`am` from `data.params.deepLink`), because that is the figure the UPI app prefills. The amount typed after `/deposit` is used only when the link carries no usable `am`. The order id and UPI id are wrapped in `<code>`, so tapping the value copies it as well (`copy_text` buttons, Bot API 7.11+). "Copy amount" copies the plain number (`400.00`), without the `₹` or thousands separators. There is deliberately no "Copy order ID" button — the order id stays tap-to-copy text only.
+`Amount to pay` is the **deep-link amount** (`am` from `data.params.deepLink`), because that is the figure the UPI app prefills. The amount typed after `/d` is used only when the link carries no usable `am`. The order id and UPI id are wrapped in `<code>`, so tapping the value copies it as well (`copy_text` buttons, Bot API 7.11+). "Copy amount" copies the plain number (`400.00`), without the `₹` or thousands separators. There is deliberately no "Copy order ID" button — the order id stays tap-to-copy text only.
 
 `Pay now` is kept even though the body shows only three details: it is the only link that ties the payment back to `orderId`, and paying the bare UPI id does not produce a matching gateway callback.
 
@@ -341,7 +341,7 @@ Chat username: @randomgroup
 User ID: 5551234567
 Username: @someone
 First name: Some
-Command: /deposit 500
+Command: /d 500
 Reason: dm_not_allowed
 Time (IST): 2026-09-28 10:15:00
 ```
@@ -580,8 +580,8 @@ The webhook signature path is still only manually verified — recommend a real 
 4. The owner can run `/reg` regardless of `TELEGRAM_ALLOWED_GROUP_IDS`; that legacy setting does not restrict registration or group commands.
 5. A stranger DMs `/balance` → denied, owner alerted with their user id.
 6. Registered group runs `/balance` → returns the group's ledger balance.
-7. `/deposit 400` → order row `pending`; reply shows the UPI id, the amount, and a working **Pay now** button pointing at the gateway deep link (or payment link when no `upi://` link is returned).
-8. `/deposit 50` (below min) and `/deposit 99999999` (above max) → rejected with the configured bound; **no** order row and **no** gateway call.
+7. `/d 400` → order row `pending`; reply shows the UPI id, the amount, and a working **Pay now** button pointing at the gateway deep link (or payment link when no `upi://` link is returned).
+8. `/d 50` (below min) and `/d 99999999` (above max) → rejected with the configured bound; **no** order row and **no** gateway call.
 9. SimplyPay success webhook for that order → `BotOrder.status = 'success'`, one `BotTransaction` with correct `balanceAfter`, group totals incremented, and a success message posted in the group.
 10. The same webhook replayed → no second `BotTransaction`, no balance change.
 11. Gateway failure webhook → order `failed`, failure message in the group, balance unchanged.

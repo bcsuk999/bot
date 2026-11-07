@@ -7,7 +7,7 @@ describe('cmdHow', () => {
   });
 
   it('explains the deposit steps and automatic confirmation', () => {
-    expect(HOW_TO_USE).toContain('/deposit 500');
+    expect(HOW_TO_USE).toContain('/d 500');
     expect(HOW_TO_USE).toContain('Order ID');
     expect(HOW_TO_USE).toContain('Amount to pay');
     expect(HOW_TO_USE).toContain('UPI ID');

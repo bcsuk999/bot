@@ -4,7 +4,7 @@ import { helpText } from '../services/bot/handlers/help.js';
 
 describe('group command menu', () => {
   it('never advertises /reg', () => {
-    expect(GROUP_MENU.map((c) => c.command)).toEqual(['start', 'balance', 'deposit', 'how', 'status', 'daily']);
+    expect(GROUP_MENU.map((c) => c.command)).toEqual(['start', 'balance', 'd', 'how', 'status', 'daily']);
     expect(GROUP_MENU.some((c) => c.command === 'reg')).toBe(false);
   });
 

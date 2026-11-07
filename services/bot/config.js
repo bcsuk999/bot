@@ -124,7 +124,7 @@ function validateConfig(config) {
   }
   if (config.mode === 'webhook' && !config.webhookUrl) problems.push('BOT_MODE=webhook requires BOT_WEBHOOK_URL');
   // Without this the update endpoint would let anyone POST forged Telegram
-  // updates and run /reg or /deposit as any chat.
+  // updates and run /reg or /d as any chat.
   if (config.mode === 'webhook' && !config.webhookSecret) {
     problems.push('BOT_MODE=webhook requires BOT_WEBHOOK_SECRET');
   }

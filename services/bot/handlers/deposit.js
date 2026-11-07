@@ -14,7 +14,7 @@ const DEPOSIT_EXPIRY_MINUTES = 20;
 const EXPIRED_LINE_TEXT = 'Expires at: already expired 🔴';
 
 /**
- * Parse and bounds-check a raw /deposit argument.
+ * Parse and bounds-check a raw /d argument.
  * Returns { ok: true, amount } or { ok: false, reason }.
  */
 function parseDepositAmount(raw, { min, max }) {
@@ -42,13 +42,13 @@ function parseDepositAmount(raw, { min, max }) {
 function amountRejection(parsed) {
   switch (parsed.reason) {
     case 'usage':
-      return 'Usage: /deposit <amount>\nExample: /deposit 400';
+      return 'Usage: /d <amount>\nExample: /d 400';
     case 'below_min':
       return `Minimum deposit is ${formatInr(parsed.min)}.`;
     case 'above_max':
       return `Maximum deposit is ${formatInr(parsed.max)}.`;
     default:
-      return 'Invalid amount. Use a plain number, e.g. /deposit 400';
+      return 'Invalid amount. Use a plain number, e.g. /d 400';
   }
 }
 
@@ -142,14 +142,14 @@ async function cmdDeposit(ctx) {
     expired: true,
   });
 
-  logger.info({ groupId: group.groupId, orderId, amount, upiId: order.upiId }, 'bot: /deposit created');
+  logger.info({ groupId: group.groupId, orderId, amount, upiId: order.upiId }, 'bot: /d created');
   return { ...reply, orderId, expiresAt, expiredReply };
 }
 
 /**
- * The /deposit reply: order id, amount to pay, UPI id, expiry and a warning.
+ * The /d reply: order id, amount to pay, UPI id, expiry and a warning.
  * `amount` is the deep-link amount (what the UPI app prefills), not necessarily
- * the amount typed after /deposit. Amount and UPI id get copy buttons; the order
+ * the amount typed after /d. Amount and UPI id get copy buttons; the order
  * id is only rendered as <code> (tap to copy).
  *
  * @returns {{ text: string, options: object }}
@@ -223,7 +223,7 @@ function scheduleDepositExpiryEdit({ client, chatId, message, orderId, expiresAt
 }
 
 /**
- * Store the Telegram message id of the /deposit slip on the order so a webhook
+ * Store the Telegram message id of the /d slip on the order so a webhook
  * settlement can edit that exact message. Best-effort: a failure only means the
  * slip is not edited, never that the deposit is lost.
  */

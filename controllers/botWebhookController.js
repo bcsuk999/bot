@@ -75,7 +75,7 @@ async function notifySuccess(order, credited) {
 }
 
 /**
- * Edit the original /deposit slip in place so it reads "order completed" instead
+ * Edit the original /d slip in place so it reads "order completed" instead
  * of leaving the pending slip in the group. Message only - the order is already
  * settled by the time this runs, and an edit failure never affects settlement.
  */

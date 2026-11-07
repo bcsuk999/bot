@@ -12,7 +12,7 @@ const config = { ownerId: 987654321 };
 describe('group command authorization', () => {
   it('requires a group record before group-scoped commands', () => {
     expect(getGroupAccessDenial('/balance', null)).toBe(DENY.NOT_REGISTERED);
-    expect(getGroupAccessDenial('/deposit', null)).toBe(DENY.NOT_REGISTERED);
+    expect(getGroupAccessDenial('/d', null)).toBe(DENY.NOT_REGISTERED);
   });
 
   it('allows only the configured owner to register a group', () => {

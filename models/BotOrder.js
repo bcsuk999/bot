@@ -79,19 +79,19 @@ const botOrderSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
-    // Telegram message id of the /deposit slip. Lets a settled order edit that
+    // Telegram message id of the /d slip. Lets a settled order edit that
     // slip in place (completed / expired) instead of only posting a new message.
     messageId: {
       type: Number,
       default: null,
     },
-    // Amount printed on the /deposit slip. The gateway deep link can carry a
+    // Amount printed on the /d slip. The gateway deep link can carry a
     // different `am`, so this is kept to rebuild the exact slip later.
     slipAmount: {
       type: Number,
       default: null,
     },
-    // AUDIT ONLY - who typed /deposit. Never used for wallet lookup or authorization.
+    // AUDIT ONLY - who typed /d. Never used for wallet lookup or authorization.
     requestedBy: {
       type: Number,
       default: null,

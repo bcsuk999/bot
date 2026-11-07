@@ -206,7 +206,7 @@ describe('resolveAuthority', () => {
 
   it('does not reject a group because it is absent from the legacy allowlist', () => {
     const r = resolveAuthority(
-      { from: { id: 111 }, chat: { id: -1009998887776, type: 'supergroup' }, command: '/deposit 500' },
+      { from: { id: 111 }, chat: { id: -1009998887776, type: 'supergroup' }, command: '/d 500' },
       config
     );
     expect(r).toEqual({ allowed: true, reason: 'group_chat', alert: false });
