@@ -11,7 +11,7 @@ describe('buildSuccessNotice', () => {
         'Order completed 💕',
         '',
         'Order type: Payment Order',
-        'type: payin',
+        'type: PAYIN🔻',
         'Order No: B20260928093925967924200',
         'Status: Completed✅',
         'Amount: 400.00',
@@ -21,21 +21,21 @@ describe('buildSuccessNotice', () => {
 
   it('labels a debit adjustment as a payout', () => {
     const text = buildSuccessNotice({ orderId: 'B1', amount: 20, direction: 'debit' });
-    expect(text).toContain('type: payout');
+    expect(text).toContain('type: PAYOUT🔺');
   });
 
   it('labels a credit (including a bot deposit) as a payin', () => {
-    expect(buildSuccessNotice({ orderId: 'B1', amount: 20, direction: 'credit' })).toContain('type: payin');
-    expect(buildSuccessNotice({ orderId: 'B1', amount: 20 })).toContain('type: payin');
+    expect(buildSuccessNotice({ orderId: 'B1', amount: 20, direction: 'credit' })).toContain('type: PAYIN🔻');
+    expect(buildSuccessNotice({ orderId: 'B1', amount: 20 })).toContain('type: PAYIN🔻');
   });
 
   it('omits the balance - it is read back with /balance', () => {
     expect(buildSuccessNotice({ orderId: 'B1', amount: 400 })).not.toContain('Balance');
   });
 
-  it('uses the heart and the checkmark as its only emoji', () => {
+  it('uses the heart, type arrow and checkmark as its only emoji', () => {
     const text = buildSuccessNotice({ orderId: 'B1', amount: 400 });
-    expect(text.match(new RegExp(EMOJI, 'gu'))).toEqual(['💕', '✅']);
+    expect(text.match(new RegExp(EMOJI, 'gu'))).toEqual(['💕', '🔻', '✅']);
   });
 });
 

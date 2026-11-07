@@ -113,17 +113,20 @@ async function cmdDeposit(ctx) {
   const paymentLink = apiRes.data?.params?.paymentLink || null;
   const parsedLink = parseUpiLink(deepLink, amount);
 
+  // Show the amount carried by the gateway deep link (`am`), because that is the
+  // figure the UPI app will prefill. Fall back to the requested amount only when
+  // the link has no usable `am`. Persisted so a later success edit can rebuild
+  // the exact slip.
+  const payAmount = parsedLink.upiAmount ?? amount;
+
   order.upiId = parsedLink.valid ? parsedLink.upiId : null;
   order.deepLink = deepLink;
   order.paymentLink = paymentLink;
   order.simplypayOrderNo = apiRes.data?.orderNo || null;
+  order.slipAmount = payAmount;
   if (!deepLink) order.remark = 'No upi deep link; gateway web link only';
   await order.save();
 
-  // Show the amount carried by the gateway deep link (`am`), because that is the
-  // figure the UPI app will prefill. Fall back to the requested amount only when
-  // the link has no usable `am`.
-  const payAmount = parsedLink.upiAmount ?? amount;
   const expiresAt = new Date(new Date(order.createdAt).getTime() + DEPOSIT_EXPIRY_MINUTES * 60 * 1000);
   const reply = buildDepositReply({
     orderId,
@@ -151,7 +154,7 @@ async function cmdDeposit(ctx) {
  *
  * @returns {{ text: string, options: object }}
  */
-function buildDepositReply({ orderId, amount, upiId, expiresAt, expired = false }) {
+function buildDepositReply({ orderId, amount, upiId, expiresAt, expired = false, completed = false }) {
   const expiry =
     expiresAt instanceof Date && !Number.isNaN(expiresAt.getTime())
       ? expiresAt
@@ -161,14 +164,18 @@ function buildDepositReply({ orderId, amount, upiId, expiresAt, expired = false 
     ? EXPIRED_LINE_TEXT
     : `Expires at: ${formatExpiryIst(expiry)} [${DEPOSIT_EXPIRY_MINUTES} minutes]`;
 
-  const text = [
+  const lines = [];
+  if (completed) lines.push('status : order completed 🟢');
+  lines.push(
     `Order ID: <code>${escapeHtml(orderId)}</code>`,
     `Amount to pay: ${formatInr(amount)}`,
     `UPI ID: ${upiId ? `<code>${escapeHtml(upiId)}</code>` : 'unavailable'}`,
     expiryLine,
     '',
-    '⚠️ Do not use the same order for multiple payments.',
-  ].join('\n');
+    '⚠️ Do not use the same order for multiple payments.'
+  );
+
+  const text = lines.join('\n');
 
   const keyboard = [
     [{ text: 'Copy amount', copy_text: { text: formatAmount(amount).replace(/,/g, '') } }],
@@ -215,11 +222,26 @@ function scheduleDepositExpiryEdit({ client, chatId, message, orderId, expiresAt
   return timer;
 }
 
+/**
+ * Store the Telegram message id of the /deposit slip on the order so a webhook
+ * settlement can edit that exact message. Best-effort: a failure only means the
+ * slip is not edited, never that the deposit is lost.
+ */
+async function rememberDepositMessage(orderId, messageId) {
+  if (!orderId || messageId == null) return;
+  try {
+    await BotOrder.updateOne({ orderId }, { $set: { messageId } });
+  } catch (err) {
+    logger.warn({ err, orderId }, 'bot: failed to store deposit message id');
+  }
+}
+
 module.exports = {
   cmdDeposit,
   parseDepositAmount,
   buildDepositReply,
   scheduleDepositExpiryEdit,
+  rememberDepositMessage,
   DEPOSIT_EXPIRY_MINUTES,
   EXPIRED_LINE_TEXT,
 };

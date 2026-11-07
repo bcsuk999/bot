@@ -5,6 +5,7 @@ const BotOrder = require('../models/BotOrder');
 const TelegramGroup = require('../models/TelegramGroup');
 const { getClient, getConfig } = require('../services/bot/client');
 const { formatAmount, formatInr } = require('../services/bot/format');
+const { buildDepositReply, DEPOSIT_EXPIRY_MINUTES } = require('../services/bot/handlers/deposit');
 const logger = require('../utils/logger');
 
 // SimplyPay status codes. The gateway is the only thing that can expire an order.
@@ -42,7 +43,7 @@ async function notifyGroup(groupId, text) {
 // 'credit' (payin), while a manual withdrawal adjustment is 'debit' (payout).
 // The type line makes the two indistinguishable-looking slips tell apart.
 function buildSuccessNotice({ orderId, amount, direction }) {
-  const type = direction === 'debit' ? 'payout' : 'payin';
+  const type = direction === 'debit' ? 'PAYOUT🔺' : 'PAYIN🔻';
   return [
     'Order completed 💕',
     '',
@@ -69,6 +70,44 @@ async function notifySuccess(order, credited) {
     order.groupId,
     buildSuccessNotice({ orderId: order.orderId, amount: credited, direction: order.direction })
   );
+
+  await markDepositSlipCompleted(order, credited);
+}
+
+/**
+ * Edit the original /deposit slip in place so it reads "order completed" instead
+ * of leaving the pending slip in the group. Message only - the order is already
+ * settled by the time this runs, and an edit failure never affects settlement.
+ */
+async function markDepositSlipCompleted(order, credited) {
+  if (order?.messageId == null) return;
+
+  const client = getClient();
+  if (!client) return;
+
+  try {
+    const createdAt = order.createdAt ? new Date(order.createdAt) : null;
+    const expiresAt =
+      createdAt && !Number.isNaN(createdAt.getTime())
+        ? new Date(createdAt.getTime() + DEPOSIT_EXPIRY_MINUTES * 60 * 1000)
+        : undefined;
+
+    const slip = buildDepositReply({
+      orderId: order.orderId,
+      amount: order.slipAmount ?? credited,
+      upiId: order.upiId || null,
+      expiresAt,
+      completed: true,
+    });
+
+    await client.editMessageText(slip.text, {
+      chat_id: order.groupId,
+      message_id: order.messageId,
+      ...slip.options,
+    });
+  } catch (err) {
+    logger.warn({ err, orderId: order.orderId }, 'bot: failed to mark deposit slip completed');
+  }
 }
 
 async function notifyFailed(order, reason) {

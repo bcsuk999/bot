@@ -71,6 +71,23 @@ describe('buildDepositReply', () => {
   });
 });
 
+describe('completed deposit slip', () => {
+  it('prepends the completed status line and keeps the slip unchanged', () => {
+    const reply = buildDepositReply({ ...base, completed: true });
+    expect(reply.text).toBe(
+      [
+        'status : order completed 🟢',
+        'Order ID: <code>B20260928093925967924200</code>',
+        'Amount to pay: ₹400.00',
+        'UPI ID: <code>merchant@paytm</code>',
+        'Expires at: 2:35 pm 6 Nov 2026 [20 minutes]',
+        '',
+        '⚠️ Do not use the same order for multiple payments.',
+      ].join('\n')
+    );
+  });
+});
+
 describe('deposit expiry notice', () => {
   it('swaps only the expiry line to the expired label', () => {
     const reply = buildDepositReply({ ...base, expired: true });
