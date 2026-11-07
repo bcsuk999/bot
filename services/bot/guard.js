@@ -89,7 +89,18 @@ async function alertOwner(ctx = {}, reason, config = {}, client = null) {
   ].join('\n');
 
   try {
-    await client.sendMessage(config.ownerId, text, { parse_mode: 'HTML' });
+    const options = { parse_mode: 'HTML' };
+
+    // Tap-to-DM the offending user. `tg://user?id=` works even when the account
+    // has no public username; if the user restricts DMs Telegram shows the
+    // profile instead of opening the chat.
+    if (from.id != null) {
+      options.reply_markup = {
+        inline_keyboard: [[{ text: '💬 Message user', url: `tg://user?id=${from.id}` }]],
+      };
+    }
+
+    await client.sendMessage(config.ownerId, text, options);
     logger.warn({ chatId: chat.id, userId: from.id, command, reason }, 'bot: alerted owner about unauthorised access');
     return true;
   } catch (err) {

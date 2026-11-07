@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { resolveAuthority, shouldAlert, pruneAlertCache, resetAlertCache, DENY } from '../services/bot/guard.js';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { resolveAuthority, shouldAlert, pruneAlertCache, resetAlertCache, alertOwner, DENY } from '../services/bot/guard.js';
 import { loadConfig, parseAllowlist, parsePositiveNumber, parseExpiredStatuses, validateConfig } from '../services/bot/config.js';
 import { EXPIRED_STATUSES } from '../controllers/botWebhookController.js';
 
@@ -270,5 +270,44 @@ describe('denial messages', () => {
 
   it('tells a suspended group to contact support', () => {
     expect(DENY.SUSPENDED).toBe('This group is suspended. Please contact support for further help.');
+  });
+});
+
+describe('alertOwner', () => {
+  const ctx = {
+    from: { id: 7705978345, username: 'CCTVPay168', first_name: '白骨精' },
+    chat: { id: -5434506019, type: 'group', title: '平台户' },
+    command: '/d',
+  };
+
+  it('adds a button that opens a DM with the offending user id', async () => {
+    const sendMessage = vi.fn().mockResolvedValue(true);
+
+    await alertOwner(ctx, 'gateway_error: No available payment channel account', { ownerId: 123 }, { sendMessage });
+
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    const [chatId, text, options] = sendMessage.mock.calls[0];
+    expect(chatId).toBe(123);
+    expect(text).toContain('Unauthorized bot access');
+    expect(options.parse_mode).toBe('HTML');
+    expect(options.reply_markup.inline_keyboard.flat()).toEqual([
+      { text: '💬 Message user', url: 'tg://user?id=7705978345' },
+    ]);
+  });
+
+  it('omits the button when the sender id is missing', async () => {
+    const sendMessage = vi.fn().mockResolvedValue(true);
+
+    await alertOwner({ ...ctx, from: {} }, 'dm_not_allowed', { ownerId: 123 }, { sendMessage });
+
+    const options = sendMessage.mock.calls[0][2];
+    expect(options.reply_markup).toBeUndefined();
+  });
+
+  it('does nothing without a client or owner id', async () => {
+    const sendMessage = vi.fn();
+    expect(await alertOwner(ctx, 'dm_not_allowed', { ownerId: 123 }, null)).toBe(false);
+    expect(await alertOwner(ctx, 'dm_not_allowed', {}, { sendMessage })).toBe(false);
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 });
