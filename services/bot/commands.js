@@ -13,23 +13,12 @@ const { cmdStatus } = require('./handlers/status');
 const { cmdStart } = require('./handlers/start');
 const { cmdInfo } = require('./handlers/info');
 const { cmdHow } = require('./handlers/how');
-const { cmdOspayDeposit } = require('./handlers/ospayDeposit');
 const { sendProcessingMessage, sendProcessingReply } = require('./reply');
 const logger = require('../../utils/logger');
 
 // Commands that need a registered group with active status.
-const GROUP_COMMANDS = new Set(['/balance', '/d', '/osd', '/daily', '/status']);
-const ALL_COMMANDS = new Set([
-  '/start',
-  '/reg',
-  '/balance',
-  '/d',
-  '/osd',
-  '/daily',
-  '/status',
-  '/info',
-  '/how',
-]);
+const GROUP_COMMANDS = new Set(['/balance', '/d', '/daily', '/status']);
+const ALL_COMMANDS = new Set(['/start', '/reg', '/balance', '/d', '/daily', '/status', '/info', '/how']);
 const REG_OWNER_ONLY = 'Only the bot owner can register a group. Ask the owner to run /reg here.';
 
 // The "/" menus Telegram renders per chat scope (Bot API setMyCommands).
@@ -195,12 +184,6 @@ async function handleMessage(msg, client, config) {
         break;
       case '/d':
         result = await cmdDeposit(ctx);
-        break;
-      case '/osd':
-        if (!isOwner(from, config)) {
-          return reply('Only the bot owner can use this command.');
-        }
-        result = await cmdOspayDeposit(ctx);
         break;
       case '/daily':
         result = await cmdDaily(ctx);

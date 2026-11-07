@@ -9,11 +9,9 @@ const adminRouter = require('./routes/admin');
 const botRouter = require('./routes/bot');
 const simplypayController = require('./controllers/simplypayController');
 const botWebhookController = require('./controllers/botWebhookController');
-const ospayController = require('./controllers/ospayController');
 const connectDB = require('./db/conn');
 const { startBot, stopBot, processWebhookUpdate } = require('./services/bot/client');
 const botGroupService = require('./services/botGroupService');
-const ospay = require('./services/ospay');
 const logger = require('./utils/logger');
 
 const app = express();
@@ -42,9 +40,6 @@ app.use(
     optionsSuccessStatus: 204,
   })
 );
-// OSPAY posts its callback as application/x-www-form-urlencoded, so this parser
-// must run before the catch-all JSON parser or the body would be empty.
-app.use(express.urlencoded({ extended: false }));
 app.use(express.json({ type: '*/*' }));
 
 app.use('/api/user', userRouter);
@@ -56,9 +51,6 @@ app.use('/api/bot', botRouter);
 app.post('/webhook/simplypay/payin', simplypayController.payinCallback);
 app.post('/webhook/simplypay/payout', simplypayController.payoutCallback);
 app.post('/webhook/simplypay/bot', botWebhookController.botPayinCallback);
-
-// OSPAY collection callback. Must answer the literal text `ok`.
-app.post('/webhook/ospay/bot', ospayController.botCallback);
 
 // Telegram update receiver for BOT_MODE=webhook. The secret in the path is the
 // only thing stopping anyone on the internet from POSTing forged updates, so it
@@ -92,15 +84,6 @@ const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   logger.info({ port: PORT }, 'Server running');
-  logger.info(
-    {
-      configured: ospay.isConfigured(),
-      baseUrl: ospay.cfg().baseUrl,
-      gateway: ospay.cfg().gateway,
-      notifyUrl: ospay.cfg().notifyUrl,
-    },
-    'OSPAY collection'
-  );
 });
 
 // Bot starts only after the DB is connected. A bot failure must not take the

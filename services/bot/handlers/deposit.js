@@ -154,16 +154,7 @@ async function cmdDeposit(ctx) {
  *
  * @returns {{ text: string, options: object }}
  */
-function buildDepositReply({
-  orderId,
-  amount,
-  upiId,
-  expiresAt,
-  expired = false,
-  completed = false,
-  payUrl = null,
-  copyAmount = null,
-}) {
+function buildDepositReply({ orderId, amount, upiId, expiresAt, expired = false, completed = false }) {
   const expiry =
     expiresAt instanceof Date && !Number.isNaN(expiresAt.getTime())
       ? expiresAt
@@ -186,18 +177,9 @@ function buildDepositReply({
 
   const text = lines.join('\n');
 
-  const keyboard = [];
-  // OSPAY returns a payment page instead of a upi:// deep link, so the slip gets
-  // a real URL button. Telegram only accepts http(s) inline URLs.
-  if (payUrl && /^https?:\/\//i.test(String(payUrl))) {
-    keyboard.push([{ text: '💳 Pay now', url: String(payUrl) }]);
-  }
-  keyboard.push([
-    {
-      text: 'Copy amount',
-      copy_text: { text: copyAmount != null ? String(copyAmount) : formatAmount(amount).replace(/,/g, '') },
-    },
-  ]);
+  const keyboard = [
+    [{ text: 'Copy amount', copy_text: { text: formatAmount(amount).replace(/,/g, '') } }],
+  ];
   if (upiId) keyboard.push([{ text: 'Copy UPI ID', copy_text: { text: String(upiId) } }]);
 
   return {

@@ -12,15 +12,14 @@ const GROUP_LINES = [
 
 const REG_LINE = '/reg     - Register a group (run it inside the group)';
 const INFO_LINE = '/info <message> - Notify all active registered groups';
-const OSPAY_LINE = '/osd <amount> - Create an OSPAY deposit (owner only, run in a group)';
 
 function helpText({ isOwner = false } = {}) {
   const lines = ['Commands:'];
-  if (isOwner) lines.push(REG_LINE, INFO_LINE, OSPAY_LINE);
+  if (isOwner) lines.push(REG_LINE, INFO_LINE);
   lines.push(...GROUP_LINES);
   return lines.join('\n');
 }
 
 const HELP = helpText();
 
-module.exports = { HELP, helpText, REG_LINE, INFO_LINE, OSPAY_LINE, GROUP_LINES };
+module.exports = { HELP, helpText, REG_LINE, INFO_LINE, GROUP_LINES };
