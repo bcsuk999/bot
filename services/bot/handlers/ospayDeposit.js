@@ -58,12 +58,27 @@ function amountRejection(parsed) {
 async function cmdOspayDeposit(ctx) {
   const { group, args, config, client } = ctx;
 
+  logger.info(
+    {
+      groupId: group.groupId,
+      userId: ctx.from?.id,
+      username: ctx.from?.username,
+      rawAmount: args[0],
+    },
+    'bot: /osd requested'
+  );
+
   if (!ospay.isConfigured()) {
+    logger.warn({ groupId: group.groupId }, 'bot: /osd rejected - OSPAY not configured');
     return { text: 'OSPAY is not configured. Please contact support.' };
   }
 
   const parsed = parseOspayAmount(args[0], { min: config.minDeposit, max: config.maxDeposit });
   if (!parsed.ok) {
+    logger.info(
+      { groupId: group.groupId, rawAmount: args[0], reason: parsed.reason },
+      'bot: /osd rejected - invalid amount'
+    );
     return { text: amountRejection(parsed) };
   }
 
@@ -85,6 +100,11 @@ async function cmdOspayDeposit(ctx) {
     requestedByUsername: ctx.from?.username || '',
   });
 
+  logger.info(
+    { groupId: group.groupId, orderId, amount, orderMongoId: order._id },
+    'bot: /osd order record created'
+  );
+
   let apiRes;
   try {
     apiRes = await ospay.createPaymentOrder({
@@ -94,6 +114,7 @@ async function cmdOspayDeposit(ctx) {
       userId: ctx.from?.id != null ? String(ctx.from.id) : undefined,
     });
   } catch (err) {
+    logger.error({ groupId: group.groupId, orderId, amount, err }, 'bot: /osd gateway request failed');
     order.status = 'failed';
     order.remark = `OSPAY request error: ${err.message}`;
     await order.save();
@@ -103,6 +124,10 @@ async function cmdOspayDeposit(ctx) {
 
   if (!apiRes || Number(apiRes.code) !== 0) {
     const errMsg = apiRes?.message || apiRes?.msg || `OSPAY error (code: ${apiRes?.code})`;
+    logger.warn(
+      { groupId: group.groupId, orderId, amount, code: apiRes?.code, message: errMsg },
+      'bot: /osd gateway returned an error'
+    );
     order.status = 'failed';
     order.remark = errMsg;
     await order.save();
@@ -139,8 +164,17 @@ async function cmdOspayDeposit(ctx) {
   });
 
   logger.info(
-    { groupId: group.groupId, orderId, amount, upiId, network: 'OSPAY' },
-    'bot: /osd created'
+    {
+      groupId: group.groupId,
+      orderId,
+      amount,
+      upiId,
+      paymentLink,
+      gatewayOrderNo: order.gatewayOrderNo,
+      expiresAt,
+      network: 'OSPAY',
+    },
+    'bot: /osd deposit slip sent'
   );
   return { ...reply, orderId, expiresAt, expiredReply };
 }

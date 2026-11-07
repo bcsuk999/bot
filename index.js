@@ -13,6 +13,7 @@ const ospayController = require('./controllers/ospayController');
 const connectDB = require('./db/conn');
 const { startBot, stopBot, processWebhookUpdate } = require('./services/bot/client');
 const botGroupService = require('./services/botGroupService');
+const ospay = require('./services/ospay');
 const logger = require('./utils/logger');
 
 const app = express();
@@ -91,6 +92,15 @@ const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   logger.info({ port: PORT }, 'Server running');
+  logger.info(
+    {
+      configured: ospay.isConfigured(),
+      baseUrl: ospay.cfg().baseUrl,
+      gateway: ospay.cfg().gateway,
+      notifyUrl: ospay.cfg().notifyUrl,
+    },
+    'OSPAY collection'
+  );
 });
 
 // Bot starts only after the DB is connected. A bot failure must not take the

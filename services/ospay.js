@@ -55,7 +55,17 @@ function generateSign(params = {}, merchantKey = cfg().merchantKey) {
     .map((key) => `${key}=${params[key]}`);
   const base = pairs.length ? pairs.join('&') : '';
   const stringToSign = base ? `${base}&key=${merchantKey}` : `key=${merchantKey}`;
-  return crypto.createHash('md5').update(stringToSign, 'utf8').digest('hex').toUpperCase();
+  const sign = crypto.createHash('md5').update(stringToSign, 'utf8').digest('hex').toUpperCase();
+  // Never log merchantKey or the full stringToSign: only the signed field names
+  // and the resulting sign, which is enough to debug a mismatch.
+  logger.debug(
+    {
+      fields: pairs.map((pair) => pair.split('=')[0]),
+      sign,
+    },
+    'OSPAY sign generated'
+  );
+  return sign;
 }
 
 /**
@@ -66,11 +76,17 @@ function verifySign(params = {}, { merchantKey = cfg().merchantKey, fields = CAL
   const sign = params?.sign;
   if (!sign || !merchantKey) return false;
   const expected = generateSign(pick(params, fields), merchantKey);
-  return expected === String(sign).trim().toUpperCase();
+  const ok = expected === String(sign).trim().toUpperCase();
+  logger.debug(
+    { orderId: params?.order_id, ok, expectedSign: expected, receivedSign: String(sign).trim().toUpperCase() },
+    'OSPAY callback sign checked'
+  );
+  return ok;
 }
 
 async function postForm(path, body) {
   const url = cfg().baseUrl + path;
+  logger.info({ path, url, body }, 'OSPAY request');
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -81,11 +97,15 @@ async function postForm(path, body) {
     body: new URLSearchParams(body).toString(),
   });
   const text = await res.text();
-  logger.info({ path, status: res.status }, 'OSPAY apiCall');
   try {
-    return JSON.parse(text);
+    const parsed = JSON.parse(text);
+    logger.info(
+      { path, status: res.status, code: parsed?.code, message: parsed?.message },
+      'OSPAY response'
+    );
+    return parsed;
   } catch (err) {
-    logger.error({ url, status: res.status }, 'OSPAY API non-JSON response');
+    logger.error({ url, status: res.status, body: text.slice(0, 500) }, 'OSPAY API non-JSON response');
     return { code: -1, message: `API returned non-JSON (status ${res.status})` };
   }
 }
@@ -130,7 +150,17 @@ async function createPaymentOrder({
   if (userId) body.user_id = userId;
   body.sign = generateSign(signed, c.merchantKey);
 
-  logger.debug({ orderId, amount: numericAmount }, 'OSPAY createPaymentOrder');
+  logger.info(
+    {
+      orderId,
+      amount: numericAmount,
+      gateway: body.gateway,
+      callback: body.callback,
+      notify: body.notify,
+      sign: body.sign,
+    },
+    'OSPAY create order'
+  );
   return postForm('/api/pay', body);
 }
 

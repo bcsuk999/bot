@@ -14,10 +14,29 @@ async function botCallback(req, res, settle = botWebhookController.settleOspayOr
   try {
     const body = req.body || {};
 
+    logger.info(
+      {
+        merId: body.mer_id,
+        orderId: body.order_id,
+        status: body.status,
+        amount: body.amount,
+        realpay: body.realpay,
+        remark: body.remark,
+        contentType: req.headers?.['content-type'],
+        ip: req.ip,
+      },
+      'OSPAY webhook received'
+    );
+
     if (!ospay.verifySign(body)) {
-      logger.warn({ orderId: body.order_id }, 'OSPAY callback signature mismatch');
+      logger.warn(
+        { orderId: body.order_id, status: body.status, sign: body.sign },
+        'OSPAY callback signature mismatch'
+      );
       return res.status(400).type('text/plain').send('fail');
     }
+
+    logger.info({ orderId: body.order_id, status: body.status }, 'OSPAY callback signature verified');
 
     if (!body.order_id) {
       logger.warn('OSPAY callback missing order_id');
@@ -25,10 +44,13 @@ async function botCallback(req, res, settle = botWebhookController.settleOspayOr
     }
 
     const result = await settle(body.order_id, body.status);
-    logger.info({ orderId: body.order_id, action: result.action }, 'OSPAY callback handled');
+    logger.info(
+      { orderId: body.order_id, status: body.status, action: result.action, trnId: result.trnId, balance: result.balance },
+      'OSPAY callback handled'
+    );
     return res.status(200).type('text/plain').send('ok');
   } catch (err) {
-    logger.error({ err }, 'OSPAY callback error');
+    logger.error({ err, orderId: req.body?.order_id }, 'OSPAY callback error');
     return res.status(500).type('text/plain').send('fail');
   }
 }

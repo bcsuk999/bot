@@ -240,8 +240,17 @@ async function settleBotOrder(merOrderNo, orderStatus) {
  */
 async function settleOspayOrder(orderId, status) {
   const peek = await BotOrder.findOne({ orderId }).select('_id groupId orderId status').lean();
-  if (!peek) return { ok: true, action: 'order_not_found' };
-  if (peek.status !== 'pending') return { ok: true, action: 'already_' + peek.status };
+  if (!peek) {
+    logger.warn({ orderId, status }, 'bot: OSPAY callback for unknown order');
+    return { ok: true, action: 'order_not_found' };
+  }
+  if (peek.status !== 'pending') {
+    logger.info(
+      { orderId, groupId: peek.groupId, status, orderStatus: peek.status },
+      'bot: OSPAY callback ignored - order already settled'
+    );
+    return { ok: true, action: 'already_' + peek.status };
+  }
 
   const normalized = String(status || '').trim().toUpperCase();
 
@@ -250,7 +259,23 @@ async function settleOspayOrder(orderId, status) {
       orderRemark: 'OSPAY status: OK',
       transactionRemark: `Group deposit ${orderId}`,
     });
-    if (settled.action !== 'credited') return { ok: true, action: settled.action };
+    if (settled.action !== 'credited') {
+      logger.warn(
+        { orderId, groupId: peek.groupId, action: settled.action },
+        'bot: OSPAY credit not applied'
+      );
+      return { ok: true, action: settled.action };
+    }
+    logger.info(
+      {
+        orderId,
+        groupId: settled.order.groupId,
+        credited: settled.credited,
+        balance: settled.balance,
+        trnId: settled.trnId,
+      },
+      'bot: OSPAY order credited'
+    );
     await notifySuccess(settled.order, settled.credited);
     return { ok: true, action: 'credited', trnId: settled.trnId, balance: settled.balance };
   }
@@ -260,13 +285,17 @@ async function settleOspayOrder(orderId, status) {
       status: 'failed',
       remark: 'OSPAY status: error',
     });
-    if (!order) return { ok: true, action: 'race_lost' };
+    if (!order) {
+      logger.warn({ orderId, groupId: peek.groupId }, 'bot: OSPAY failure claim lost race');
+      return { ok: true, action: 'race_lost' };
+    }
     await TelegramGroup.updateOne({ groupId: order.groupId }, { $inc: { totalFailed: 1 } });
+    logger.info({ orderId, groupId: order.groupId }, 'bot: OSPAY order marked failed');
     await notifyFailed(order, 'OSPAY error');
     return { ok: true, action: 'failed' };
   }
 
-  logger.debug({ orderId, status }, 'bot: OSPAY callback status not actionable');
+  logger.info({ orderId, status }, 'bot: OSPAY callback status not actionable');
   return { ok: true, action: 'no_op' };
 }
 
