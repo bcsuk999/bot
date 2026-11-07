@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { resolveAuthority, shouldAlert, pruneAlertCache, resetAlertCache, alertOwner, DENY } from '../services/bot/guard.js';
+import { resolveAuthority, shouldAlert, pruneAlertCache, resetAlertCache, alertOwner, chatDeepLink, DENY } from '../services/bot/guard.js';
 import { loadConfig, parseAllowlist, parsePositiveNumber, parseExpiredStatuses, validateConfig } from '../services/bot/config.js';
 import { EXPIRED_STATUSES } from '../controllers/botWebhookController.js';
 
@@ -293,6 +293,42 @@ describe('alertOwner', () => {
     expect(options.reply_markup.inline_keyboard.flat()).toEqual([
       { text: '💬 Message user', url: 'tg://user?id=7705978345' },
     ]);
+  });
+
+  it('adds an Open group button for a supergroup id', async () => {
+    const sendMessage = vi.fn().mockResolvedValue(true);
+    const supergroup = {
+      ...ctx,
+      chat: { id: -1001234567890, type: 'supergroup', title: '平台户' },
+    };
+
+    await alertOwner(supergroup, 'gateway_error', { ownerId: 123 }, { sendMessage });
+
+    const options = sendMessage.mock.calls[0][2];
+    expect(options.reply_markup.inline_keyboard.flat()).toEqual([
+      { text: '💬 Message user', url: 'tg://user?id=7705978345' },
+      { text: '👥 Open group', url: 'https://t.me/c/1234567890' },
+    ]);
+  });
+
+  it('adds an Open group button from the public username when present', async () => {
+    const sendMessage = vi.fn().mockResolvedValue(true);
+    const publicGroup = {
+      ...ctx,
+      chat: { id: -1001234567890, type: 'supergroup', title: 'Platform', username: 'platformhub' },
+    };
+
+    await alertOwner(publicGroup, 'gateway_error', { ownerId: 123 }, { sendMessage });
+
+    const options = sendMessage.mock.calls[0][2];
+    expect(options.reply_markup.inline_keyboard.flat()).toContainEqual({
+      text: '👥 Open group',
+      url: 'https://t.me/platformhub',
+    });
+  });
+
+  it('has no group link for a basic group (not a -100 id)', () => {
+    expect(chatDeepLink({ id: -5434506019, type: 'group' })).toBeNull();
   });
 
   it('omits the button when the sender id is missing', async () => {

@@ -66,6 +66,24 @@ function resolveAuthority(ctx = {}, config = {}) {
 }
 
 /**
+ * Best-effort deep link that opens the offending chat.
+ *
+ * - A public group can be opened by its username: https://t.me/<username>
+ * - A supergroup can be opened by id: https://t.me/c/<id without -100 prefix>
+ * - A basic group (negative id that is not -100...) has NO id deep link, so null.
+ */
+function chatDeepLink(chat = {}) {
+  const username = typeof chat.username === 'string' ? chat.username.trim() : '';
+  if (username) return `https://t.me/${username}`;
+
+  const id = chat.id;
+  if (id == null) return null;
+  const raw = String(id);
+  if (!raw.startsWith('-100') || raw.length <= 4) return null;
+  return `https://t.me/c/${raw.slice(4)}`;
+}
+
+/**
  * DM the owner about an unauthorised command. Reports BOTH the offending chat id
  * and the user id, as required. Best-effort: never throws into the command path.
  */
@@ -94,10 +112,20 @@ async function alertOwner(ctx = {}, reason, config = {}, client = null) {
     // Tap-to-DM the offending user. `tg://user?id=` works even when the account
     // has no public username; if the user restricts DMs Telegram shows the
     // profile instead of opening the chat.
+    const buttons = [];
     if (from.id != null) {
-      options.reply_markup = {
-        inline_keyboard: [[{ text: '💬 Message user', url: `tg://user?id=${from.id}` }]],
-      };
+      buttons.push({ text: '💬 Message user', url: `tg://user?id=${from.id}` });
+    }
+
+    // Tap-to-open the offending chat. Only possible for a public group (username)
+    // or a supergroup (-100 id); a basic group has no id deep link.
+    const chatLink = chatDeepLink(chat);
+    if (chatLink) {
+      buttons.push({ text: '👥 Open group', url: chatLink });
+    }
+
+    if (buttons.length) {
+      options.reply_markup = { inline_keyboard: [buttons] };
     }
 
     await client.sendMessage(config.ownerId, text, options);
@@ -129,4 +157,14 @@ async function enforce(ctx = {}, config = {}, client = null) {
   return decision;
 }
 
-module.exports = { DENY, isOwner, resolveAuthority, alertOwner, enforce, shouldAlert, pruneAlertCache, resetAlertCache };
+module.exports = {
+  DENY,
+  isOwner,
+  resolveAuthority,
+  alertOwner,
+  enforce,
+  shouldAlert,
+  pruneAlertCache,
+  resetAlertCache,
+  chatDeepLink,
+};
