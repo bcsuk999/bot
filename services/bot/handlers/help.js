@@ -4,6 +4,7 @@
 
 const GROUP_LINES = [
   '/balance - Check this group balance',
+  '/id      - Show this group ID and UID',
   '/d <amount> - Create a deposit',
   '/how     - How to create a deposit and use the bot',
   '/status <order id> - Check a deposit status',

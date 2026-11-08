@@ -3,6 +3,7 @@ const { enforce, DENY, isOwner } = require('./guard');
 const { helpText } = require('./handlers/help');
 const { cmdReg } = require('./handlers/reg');
 const { cmdBalance } = require('./handlers/balance');
+const { cmdId } = require('./handlers/id');
 const {
   cmdDeposit,
   scheduleDepositExpiryEdit,
@@ -18,8 +19,8 @@ const { sendProcessingMessage, sendProcessingReply } = require('./reply');
 const logger = require('../../utils/logger');
 
 // Commands that need a registered group with active status.
-const GROUP_COMMANDS = new Set(['/balance', '/d', '/daily', '/status']);
-const ALL_COMMANDS = new Set(['/start', '/reg', '/balance', '/d', '/daily', '/status', '/info', '/how', '/pl']);
+const GROUP_COMMANDS = new Set(['/balance', '/id', '/d', '/daily', '/status']);
+const ALL_COMMANDS = new Set(['/start', '/reg', '/balance', '/id', '/d', '/daily', '/status', '/info', '/how', '/pl']);
 const REG_OWNER_ONLY = 'Only the bot owner can register a group. Ask the owner to run /reg here.';
 
 // The "/" menus Telegram renders per chat scope (Bot API setMyCommands).
@@ -28,6 +29,7 @@ const REG_OWNER_ONLY = 'Only the bot owner can register a group. Ask the owner t
 const GROUP_MENU = [
   { command: 'start', description: 'Show bot info and command list' },
   { command: 'balance', description: 'Show this group balance' },
+  { command: 'id', description: 'Show this group ID and UID' },
   { command: 'd', description: 'Create a deposit: /d <amount>' },
   { command: 'how', description: 'How to create a deposit and use the bot' },
   { command: 'status', description: 'Check a deposit: /status <order id>' },
@@ -207,6 +209,9 @@ async function handleMessage(msg, client, config) {
         break;
       case '/balance':
         result = await cmdBalance(ctx);
+        break;
+      case '/id':
+        result = await cmdId(ctx);
         break;
       case '/d':
         result = await cmdDeposit(ctx);
