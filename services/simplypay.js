@@ -39,8 +39,11 @@ function generateSign(params, appSecret) {
   if (appSecret) {
     paramsString += `&key=${appSecret}`;
   }
-  logger.debug('SimplyPay signStr generated');
-  return crypto.createHash('sha256').update(paramsString, 'utf8').digest('hex');
+  const sign = crypto.createHash('sha256').update(paramsString, 'utf8').digest('hex');
+  // Never log the app secret. The signed field names and the resulting sign are
+  // enough to compare our value with the one the gateway returns.
+  logger.info({ fields: paramsKeys, sign }, 'SimplyPay sign generated');
+  return sign;
 }
 
 function verifySign(params, appSecret = SECRET) {
@@ -53,17 +56,28 @@ function verifySign(params, appSecret = SECRET) {
 
 async function apiCall(path, body) {
   const url = BASE_URL + path;
+  logger.info({ path, body }, 'SimplyPay request');
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
   const text = await res.text();
-  logger.info({ path, status: res.status }, 'SimplyPay apiCall');
   try {
-    return JSON.parse(text);
+    const parsed = JSON.parse(text);
+    logger.info(
+      {
+        path,
+        status: res.status,
+        code: parsed?.code,
+        msg: parsed?.msg || parsed?.message,
+        response: parsed,
+      },
+      'SimplyPay response'
+    );
+    return parsed;
   } catch (e) {
-    logger.error({ url, status: res.status }, 'SimplyPay API non-JSON response');
+    logger.error({ url, status: res.status, body: text.slice(0, 500) }, 'SimplyPay API non-JSON response');
     return { code: -1, msg: `API returned non-JSON (status ${res.status})` };
   }
 }
@@ -80,7 +94,10 @@ async function createPaymentOrder({ merOrderNo, amount, returnUrl, notifyUrl, at
     extra: extra || {},
   };
   params.sign = generateSign(params, SECRET);
-  logger.debug({ merOrderNo, amount }, 'SimplyPay createPaymentOrder');
+  logger.info(
+    { merOrderNo, amount: params.amount, attach: params.attach, sign: params.sign },
+    'SimplyPay create order'
+  );
   return apiCall('/payment/order/create', params);
 }
 
@@ -95,6 +112,10 @@ async function createPayoutOrder({ merOrderNo, amount, notifyUrl, attach, extra 
     extra: extra || {},
   };
   params.sign = generateSign(params, SECRET);
+  logger.info(
+    { merOrderNo, amount: params.amount, attach: params.attach, sign: params.sign },
+    'SimplyPay create payout order'
+  );
   return apiCall('/payout/order/create', params);
 }
 

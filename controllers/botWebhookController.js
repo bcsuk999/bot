@@ -193,12 +193,38 @@ async function settleSuccess(
  */
 async function settleBotOrder(merOrderNo, orderStatus) {
   const peek = await BotOrder.findOne({ orderId: merOrderNo }).select('_id groupId orderId status').lean();
-  if (!peek) return { ok: true, action: 'order_not_found' };
-  if (peek.status !== 'pending') return { ok: true, action: 'already_' + peek.status };
+  if (!peek) {
+    logger.warn({ merOrderNo, orderStatus }, 'bot: SimplyPay callback for unknown order');
+    return { ok: true, action: 'order_not_found' };
+  }
+  if (peek.status !== 'pending') {
+    logger.info(
+      { merOrderNo, orderStatus, groupId: peek.groupId, currentStatus: peek.status },
+      'bot: SimplyPay callback ignored - order already settled'
+    );
+    return { ok: true, action: 'already_' + peek.status };
+  }
 
   if (SUCCESS_STATUSES.includes(orderStatus)) {
     const settled = await settleSuccess(merOrderNo, orderStatus);
-    if (settled.action !== 'credited') return { ok: true, action: settled.action };
+    if (settled.action !== 'credited') {
+      logger.warn(
+        { merOrderNo, orderStatus, groupId: peek.groupId, action: settled.action },
+        'bot: SimplyPay credit not applied'
+      );
+      return { ok: true, action: settled.action };
+    }
+    logger.info(
+      {
+        merOrderNo,
+        orderStatus,
+        groupId: settled.order.groupId,
+        credited: settled.credited,
+        balance: settled.balance,
+        trnId: settled.trnId,
+      },
+      'bot: SimplyPay order credited'
+    );
     await notifySuccess(settled.order, settled.credited);
     return { ok: true, action: 'credited', trnId: settled.trnId, balance: settled.balance };
   }
@@ -208,7 +234,14 @@ async function settleBotOrder(merOrderNo, orderStatus) {
       status: 'expired',
       remark: `SimplyPay status: ${orderStatus}`,
     });
-    if (!order) return { ok: true, action: 'race_lost' };
+    if (!order) {
+      logger.warn({ merOrderNo, orderStatus, groupId: peek.groupId }, 'bot: SimplyPay expiry claim lost race');
+      return { ok: true, action: 'race_lost' };
+    }
+    logger.info(
+      { merOrderNo, orderStatus, groupId: order.groupId },
+      'bot: SimplyPay order expired'
+    );
     await notifyFailed(order, 'expired');
     return { ok: true, action: 'expired' };
   }
@@ -218,14 +251,21 @@ async function settleBotOrder(merOrderNo, orderStatus) {
       status: 'failed',
       remark: `SimplyPay status: ${orderStatus}`,
     });
-    if (!order) return { ok: true, action: 'race_lost' };
+    if (!order) {
+      logger.warn({ merOrderNo, orderStatus, groupId: peek.groupId }, 'bot: SimplyPay failure claim lost race');
+      return { ok: true, action: 'race_lost' };
+    }
     await TelegramGroup.updateOne({ groupId: order.groupId }, { $inc: { totalFailed: 1 } });
+    logger.info(
+      { merOrderNo, orderStatus, groupId: order.groupId },
+      'bot: SimplyPay order marked failed'
+    );
     await notifyFailed(order, `status ${orderStatus}`);
     return { ok: true, action: 'failed' };
   }
 
   // 0, 1, and any code the gateway has not documented: still pending. No-op.
-  logger.debug({ merOrderNo, orderStatus }, 'bot: callback pending, no action');
+  logger.info({ merOrderNo, orderStatus }, 'bot: SimplyPay callback status not actionable');
   return { ok: true, action: 'no_op' };
 }
 
@@ -235,7 +275,7 @@ async function settleBotOrder(merOrderNo, orderStatus) {
  */
 async function handlePayinCallback(body = {}) {
   if (!simplypay.verifySign(body)) {
-    logger.warn('bot: SimplyPay callback signature mismatch');
+    logger.warn({ merOrderNo: body.merOrderNo }, 'bot: SimplyPay callback signature mismatch');
     return { ok: true, action: 'bad_signature' };
   }
 
@@ -244,6 +284,7 @@ async function handlePayinCallback(body = {}) {
   const { merOrderNo, orderStatus } = data;
   if (!merOrderNo) return { ok: true, action: 'no_order_no' };
 
+  logger.info({ merOrderNo, orderStatus }, 'bot: SimplyPay callback received');
   return settleBotOrder(merOrderNo, orderStatus);
 }
 
@@ -251,7 +292,10 @@ async function handlePayinCallback(body = {}) {
 async function botPayinCallback(req, res) {
   try {
     const result = await handlePayinCallback(req.body);
-    logger.info({ action: result.action }, 'bot: webhook handled');
+    logger.info(
+      { action: result.action, trnId: result.trnId, balance: result.balance },
+      'bot: webhook handled'
+    );
     return res.status(200).json({ success: true });
   } catch (err) {
     logger.error({ err }, 'bot: webhook error');

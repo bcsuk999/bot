@@ -117,6 +117,11 @@ exports.payinCallback = async (req, res) => {
     const { merOrderNo, orderStatus } = data;
     if (!merOrderNo) return res.status(200).json({ success: true });
 
+    logger.info(
+      { merOrderNo, orderStatus, orderNo: data.orderNo, amount: data.amount },
+      'SimplyPay payin callback received'
+    );
+
     const payin = await Payin.findOne({ payinId: merOrderNo });
     if (!payin) {
       // Not a user Payin. The gateway does not reliably honour the per-order
@@ -125,22 +130,41 @@ exports.payinCallback = async (req, res) => {
       // 200 and silently dropping the payment.
       const botResult = await settleBotOrder(merOrderNo, orderStatus);
       if (botResult.action !== 'order_not_found') {
-        logger.info({ merOrderNo, action: botResult.action }, 'payinCallback: settled as bot order');
+        logger.info(
+          { merOrderNo, orderStatus, action: botResult.action, trnId: botResult.trnId, balance: botResult.balance },
+          'payinCallback: settled as bot order'
+        );
       }
       return res.status(200).json({ success: true });
     }
 
-    if (payin.status !== 'pending') return res.status(200).json({ success: true });
+    if (payin.status !== 'pending') {
+      logger.info(
+        { merOrderNo, orderStatus, payinId: payin.payinId, status: payin.status },
+        'SimplyPay payin callback ignored - already handled'
+      );
+      return res.status(200).json({ success: true });
+    }
 
     const SUCCESS_STATUSES = [2, 3];
     const FAILED_STATUSES = [-1, -2];
 
     if (SUCCESS_STATUSES.includes(orderStatus)) {
       await approvePayin(payin);
+      logger.info(
+        { merOrderNo, orderStatus, payinId: payin.payinId, amount: payin.amount },
+        'SimplyPay payin completed'
+      );
     } else if (FAILED_STATUSES.includes(orderStatus)) {
       payin.status = 'failed';
       payin.remark = `SimplyPay status: ${orderStatus}`;
       await payin.save();
+      logger.info(
+        { merOrderNo, orderStatus, payinId: payin.payinId, amount: payin.amount },
+        'SimplyPay payin failed'
+      );
+    } else {
+      logger.info({ merOrderNo, orderStatus }, 'SimplyPay payin callback no action');
     }
 
     return res.status(200).json({ success: true });
@@ -250,10 +274,21 @@ exports.payoutCallback = async (req, res) => {
     const { merOrderNo, orderStatus } = data;
     if (!merOrderNo) return res.status(200).json({ success: true });
 
+    logger.info(
+      { merOrderNo, orderStatus, orderNo: data.orderNo, amount: data.amount },
+      'SimplyPay payout callback received'
+    );
+
     const payout = await Payout.findOne({ payoutId: merOrderNo });
     if (!payout) return res.status(200).json({ success: true });
 
-    if (payout.status !== 'pending') return res.status(200).json({ success: true });
+    if (payout.status !== 'pending') {
+      logger.info(
+        { merOrderNo, orderStatus, payoutId: payout.payoutId, status: payout.status },
+        'SimplyPay payout callback ignored - already handled'
+      );
+      return res.status(200).json({ success: true });
+    }
 
     const SUCCESS_STATUSES = [2, 3];
     const FAILED_STATUSES = [-1, -2];
@@ -263,6 +298,10 @@ exports.payoutCallback = async (req, res) => {
       payout.completedAt = new Date();
       payout.remark = `SimplyPay order: ${data.orderNo || ''}`;
       await payout.save();
+      logger.info(
+        { merOrderNo, orderStatus, payoutId: payout.payoutId, amount: payout.amount },
+        'SimplyPay payout completed'
+      );
     } else if (FAILED_STATUSES.includes(orderStatus)) {
       payout.status = 'failed';
       payout.failedAt = new Date();
@@ -299,6 +338,13 @@ exports.payoutCallback = async (req, res) => {
           referenceId: merOrderNo,
         });
       }
+
+      logger.info(
+        { merOrderNo, orderStatus, payoutId: payout.payoutId, amount: payout.amount },
+        'SimplyPay payout failed and refunded'
+      );
+    } else {
+      logger.info({ merOrderNo, orderStatus }, 'SimplyPay payout callback no action');
     }
 
     return res.status(200).json({ success: true });
