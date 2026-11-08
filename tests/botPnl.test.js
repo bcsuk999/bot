@@ -94,7 +94,8 @@ describe('renderPnlBlock', () => {
 
   it('renders every requested line with the profit', () => {
     const text = renderPnlBlock(row, 107);
-    expect(text).toContain('UID: 32045 | 160  (Test Group)');
+    expect(text).toContain('UID: 32045 | 160');
+    expect(text).not.toContain('Test Group');
     expect(text).toContain('Todays deposit: ₹10,000.00');
     expect(text).toContain('Total deposit: ₹1,20,000.00');
     expect(text).toContain('Total payout: ₹40,000.00');
@@ -104,7 +105,7 @@ describe('renderPnlBlock', () => {
 
   it('says the rate is not set instead of showing a wrong number', () => {
     const text = renderPnlBlock({ ...row, exchangeRate: null }, 107);
-    expect(text).toContain('UID: 32045 | -  (Test Group)');
+    expect(text).toContain('UID: 32045 | -');
     expect(text).toContain('Profit/Loss: rate not set');
   });
 
@@ -131,10 +132,10 @@ describe('renderPnlReport', () => {
       { uid: '22222', title: 'B', exchangeRate: null, todayDeposit: 0, totalDeposit: 0, todayPayout: 0, totalPayout: 0 },
     ];
     const text = renderPnlReport({ dateLabel: '23/11/2026', cost: 107, rows });
-    expect(text).toContain('P&L — 23/11/2026 (cost ₹107.00/USDT)');
-    expect(text).toContain('UID: 11111 | 160  (A)');
+    expect(text).not.toContain('P&L —');
+    expect(text).toContain('UID: 11111 | 160');
     expect(text).not.toContain('UID: 22222');
-    expect(text.split('\n\n').length).toBeGreaterThanOrEqual(3);
+    expect(text.split('\n\n').length).toBeGreaterThanOrEqual(2);
   });
 
   it('excludes groups without an exchange rate entirely', () => {
@@ -162,7 +163,8 @@ describe('renderPnlReport', () => {
     expect(totals.totalPayout).toBe(5000);
 
     const text = renderPnlReport({ dateLabel: '23/11/2026', cost: 107, rows });
-    expect(text).toContain('All groups total (2 with rate set)');
+    expect(text).toContain('All groups total');
+    expect(text).not.toContain('with rate set');
     expect(text).toContain('Todays deposit: ₹15,000.00');
     expect(text).toContain('Total deposit: ₹28,000.00');
     expect(text).toContain('Total payout: ₹5,000.00');

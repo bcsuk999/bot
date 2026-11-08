@@ -167,9 +167,9 @@ Rules:
 - Only groups with `status: "active"` **and** an exchange rate set are included.
   Banned/suspended groups and groups with no rate are excluded.
 - Date is an IST day; `DD/MM/YY` or `DD/MM/YYYY`.
-- Per group:
+- Per group (no report header, no group title):
   ```
-  UID: 32045 | 160  (Test Group)
+  UID: 32045 | 160
   Todays deposit: ₹12,000.00
   Total deposit: ₹1,20,000.00
   Total payout: ₹40,000.00
@@ -183,9 +183,7 @@ Rules:
   ```
   (((exchangeRate - cost) / exchangeRate) - 0.056) × todays deposit
   ```
-- The report ends with a summary of all groups **that have a rate set**. Groups
-  without a rate are excluded from the report entirely — no per-group block and
-  no contribution to any summary figure.
+- The report ends with an `All groups total` block covering the same rated groups.
 - If no active group has a rate set, the report replies
   `No active groups with an exchange rate set.`
 - Long reports are split across multiple Telegram messages.

@@ -199,9 +199,7 @@ function renderPnlBlock(row, cost) {
     deposit: row.todayDeposit,
   });
 
-  const uidLine = `UID: ${row.uid || '-'} | ${formatRate(row.exchangeRate)}${
-    row.title ? `  (${row.title})` : ''
-  }`;
+  const uidLine = `UID: ${row.uid || '-'} | ${formatRate(row.exchangeRate)}`;
   const lines = [
     uidLine,
     `Todays deposit: ${formatInr(row.todayDeposit)}`,
@@ -253,7 +251,7 @@ function summarizeRatedRows(rows = [], cost) {
 
 function renderPnlSummary(totals) {
   return [
-    `All groups total (${totals.groups} with rate set)`,
+    'All groups total',
     `Todays deposit: ${formatInr(totals.todayDeposit)}`,
     `Total deposit: ${formatInr(totals.totalDeposit)}`,
     `Total payout: ${formatInr(totals.totalPayout)}`,
@@ -267,15 +265,14 @@ function hasExchangeRate(row) {
   return Number.isFinite(rate) && rate > 0;
 }
 
-function renderPnlReport({ dateLabel, cost, rows = [] }) {
-  const head = `P&L — ${dateLabel} (cost ${formatInr(cost)}/USDT)`;
+function renderPnlReport({ rows = [], cost }) {
   const rated = rows.filter(hasExchangeRate);
-  if (!rated.length) return `${head}\n\nNo active groups with an exchange rate set.`;
+  if (!rated.length) return 'No active groups with an exchange rate set.';
 
   const blocks = rated.map((row) => renderPnlBlock(row, cost));
   blocks.push(renderPnlSummary(summarizeRatedRows(rated, cost)));
 
-  return [head, '', blocks.join('\n\n')].join('\n');
+  return blocks.join('\n\n');
 }
 
 /**
