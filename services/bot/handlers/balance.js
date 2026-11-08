@@ -12,11 +12,14 @@ async function cmdBalance(ctx) {
     getGroupStats(group._id, 'today'),
   ]);
 
+  const rate = Number(group.exchangeRate);
+  const usdt = Number.isFinite(rate) && rate > 0 ? (balance / rate).toFixed(2) : '-';
+
   return {
     text: [
       'Merchant balance:',
       '',
-      `Balance: ${formatAmount(balance)}`,
+      `Balance: ${formatAmount(balance)}  | U ${usdt}`,
       `Deposit: ${formatAmount(today.success.amount)}`,
       `Frozen: ${formatAmount(0)}`,
     ].join('\n'),
