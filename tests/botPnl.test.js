@@ -6,8 +6,10 @@ import {
   computePnl,
   renderPnlBlock,
   renderPnlReport,
+  summarizeRatedRows,
   chunkText,
   formatSignedInr,
+  formatPnlWithEmoji,
 } from '../services/bot/pnl.js';
 
 describe('parseIstDate', () => {
@@ -92,17 +94,24 @@ describe('renderPnlBlock', () => {
 
   it('renders every requested line with the profit', () => {
     const text = renderPnlBlock(row, 107);
-    expect(text).toContain('UID: 32045 (Test Group)');
+    expect(text).toContain('UID: 32045 | 160  (Test Group)');
     expect(text).toContain('Todays deposit: ₹10,000.00');
     expect(text).toContain('Total deposit: ₹1,20,000.00');
     expect(text).toContain('Total payout: ₹40,000.00');
     expect(text).toContain('Todays payout: ₹2,000.00');
-    expect(text).toContain('Profit/Loss: +₹2,752.50');
+    expect(text).toContain('Profit/Loss: 🟢₹2,752.50');
   });
 
   it('says the rate is not set instead of showing a wrong number', () => {
     const text = renderPnlBlock({ ...row, exchangeRate: null }, 107);
+    expect(text).toContain('UID: 32045 | -  (Test Group)');
     expect(text).toContain('Profit/Loss: rate not set');
+  });
+
+  it('marks a loss in red and a profit in green', () => {
+    expect(formatPnlWithEmoji(-560)).toBe('🔴-₹560.00');
+    expect(formatPnlWithEmoji(2752.5)).toBe('🟢₹2,752.50');
+    expect(formatPnlWithEmoji(0)).toBe('🟢₹0.00');
   });
 
   it('shows a loss with a minus sign', () => {
@@ -123,9 +132,30 @@ describe('renderPnlReport', () => {
     ];
     const text = renderPnlReport({ dateLabel: '23/11/2026', cost: 107, rows });
     expect(text).toContain('P&L — 23/11/2026 (cost ₹107.00/USDT)');
-    expect(text).toContain('UID: 11111 (A)');
-    expect(text).toContain('UID: 22222 (B)');
+    expect(text).toContain('UID: 11111 | 160  (A)');
+    expect(text).toContain('UID: 22222 | -  (B)');
     expect(text.split('\n\n').length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('ends with totals that exclude groups without a rate', () => {
+    const rows = [
+      { uid: '11111', title: 'A', exchangeRate: 160, todayDeposit: 10000, totalDeposit: 20000, todayPayout: 1000, totalPayout: 3000 },
+      { uid: '22222', title: 'B', exchangeRate: 200, todayDeposit: 5000, totalDeposit: 8000, todayPayout: 500, totalPayout: 2000 },
+      { uid: '33333', title: 'No rate', exchangeRate: null, todayDeposit: 9999, totalDeposit: 9999, todayPayout: 9999, totalPayout: 9999 },
+    ];
+    const totals = summarizeRatedRows(rows, 107);
+    expect(totals.groups).toBe(2);
+    expect(totals.todayDeposit).toBe(15000);
+    expect(totals.totalDeposit).toBe(28000);
+    expect(totals.todayPayout).toBe(1500);
+    expect(totals.totalPayout).toBe(5000);
+
+    const text = renderPnlReport({ dateLabel: '23/11/2026', cost: 107, rows });
+    expect(text).toContain('All groups total (2 with rate set)');
+    expect(text).toContain('Todays deposit: ₹15,000.00');
+    expect(text).toContain('Total deposit: ₹28,000.00');
+    expect(text).toContain('Total payout: ₹5,000.00');
+    expect(text).toContain('Todays payout: ₹1,500.00');
   });
 });
 

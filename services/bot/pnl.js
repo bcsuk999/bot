@@ -99,6 +99,19 @@ function formatSignedInr(value) {
   return n < 0 ? `-${formatInr(Math.abs(n))}` : `+${formatInr(n)}`;
 }
 
+// 🟢 for profit (or break-even), 🔴 for a loss.
+function formatPnlWithEmoji(value) {
+  const n = Number(value) || 0;
+  const icon = n < 0 ? '🔴' : '🟢';
+  const amount = formatInr(Math.abs(n));
+  return n < 0 ? `${icon}-${amount}` : `${icon}${amount}`;
+}
+
+function formatRate(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? String(n) : '-';
+}
+
 /**
  * Aggregate every active group's deposits and payouts for the window.
  *
@@ -182,7 +195,9 @@ function renderPnlBlock(row, cost) {
     deposit: row.todayDeposit,
   });
 
-  const uidLine = `UID: ${row.uid || '-'}${row.title ? ` (${row.title})` : ''}`;
+  const uidLine = `UID: ${row.uid || '-'} | ${formatRate(row.exchangeRate)}${
+    row.title ? `  (${row.title})` : ''
+  }`;
   const lines = [
     uidLine,
     `Todays deposit: ${formatInr(row.todayDeposit)}`,
@@ -194,17 +209,63 @@ function renderPnlBlock(row, cost) {
   if (pnl == null) {
     lines.push('Profit/Loss: rate not set');
   } else {
-    lines.push(`Profit/Loss: ${formatSignedInr(pnl)}`);
+    lines.push(`Profit/Loss: ${formatPnlWithEmoji(pnl)}`);
   }
 
   return lines.join('\n');
+}
+
+// Totals across groups that have an exchange rate set. Groups without a rate
+// are excluded from every figure, per the report's business rule.
+function summarizeRatedRows(rows = [], cost) {
+  const totals = {
+    groups: 0,
+    todayDeposit: 0,
+    totalDeposit: 0,
+    totalPayout: 0,
+    todayPayout: 0,
+    pnl: 0,
+  };
+
+  for (const row of rows) {
+    const pnl = computePnl({
+      exchangeRate: row.exchangeRate,
+      cost,
+      deposit: row.todayDeposit,
+    });
+    if (pnl == null) continue;
+
+    totals.groups += 1;
+    totals.todayDeposit += Number(row.todayDeposit) || 0;
+    totals.totalDeposit += Number(row.totalDeposit) || 0;
+    totals.totalPayout += Number(row.totalPayout) || 0;
+    totals.todayPayout += Number(row.todayPayout) || 0;
+    totals.pnl += pnl;
+  }
+
+  totals.pnl = Math.round(totals.pnl * 100) / 100;
+  return totals;
+}
+
+function renderPnlSummary(totals) {
+  return [
+    `All groups total (${totals.groups} with rate set)`,
+    `Todays deposit: ${formatInr(totals.todayDeposit)}`,
+    `Total deposit: ${formatInr(totals.totalDeposit)}`,
+    `Total payout: ${formatInr(totals.totalPayout)}`,
+    `Todays payout: ${formatInr(totals.todayPayout)}`,
+    `Profit/Loss: ${formatPnlWithEmoji(totals.pnl)}`,
+  ].join('\n');
 }
 
 function renderPnlReport({ dateLabel, cost, rows = [] }) {
   const head = `P&L — ${dateLabel} (cost ${formatInr(cost)}/USDT)`;
   if (!rows.length) return `${head}\n\nNo active groups.`;
 
-  return [head, '', rows.map((row) => renderPnlBlock(row, cost)).join('\n\n')].join('\n');
+  const blocks = rows.map((row) => renderPnlBlock(row, cost));
+  blocks.push(renderPnlSummary(summarizeRatedRows(rows, cost)));
+
+  return [head, '', blocks.join('\n\n')].join('\n');
 }
 
 /**
@@ -252,6 +313,10 @@ module.exports = {
   getGroupPnlRows,
   renderPnlBlock,
   renderPnlReport,
+  summarizeRatedRows,
+  renderPnlSummary,
   chunkText,
   formatSignedInr,
+  formatPnlWithEmoji,
+  formatRate,
 };
