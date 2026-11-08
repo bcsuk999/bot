@@ -95,7 +95,7 @@ async function cmdDeposit(ctx) {
     order.status = 'failed';
     order.remark = `Gateway request error: ${err.message}`;
     await order.save();
-    await alertOwner(ctx, 'gateway_request_error', config, client);
+    await alertOwner(ctx, `gateway_request_error: ${err.message} (order ${orderId})`, config, client);
     return { text: 'Payment gateway is unreachable. Please try again shortly.' };
   }
 
@@ -105,7 +105,7 @@ async function cmdDeposit(ctx) {
     order.status = 'failed';
     order.remark = errMsg;
     await order.save();
-    await alertOwner(ctx, `gateway_error: ${errMsg}`, config, client);
+    await alertOwner(ctx, `gateway_error: ${errMsg} (order ${orderId})`, config, client);
     return { text: `Payment gateway error: ${errMsg}` };
   }
 

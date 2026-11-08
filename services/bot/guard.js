@@ -84,15 +84,30 @@ function chatDeepLink(chat = {}) {
 }
 
 /**
- * DM the owner about an unauthorised command. Reports BOTH the offending chat id
- * and the user id, as required. Best-effort: never throws into the command path.
+ * Headline for an owner alert.
+ *
+ * The same alert channel is used for access denials and for payment gateway
+ * failures, so title it with what actually happened instead of always claiming
+ * an unauthorised access.
+ */
+function alertTitle(reason = '') {
+  if (String(reason).startsWith('gateway_')) return '⚠️ Payment gateway error';
+  return 'Unauthorized bot access';
+}
+
+/**
+ * DM the owner about an unauthorised command or a gateway failure. Reports BOTH
+ * the offending chat id and the user id, as required. Best-effort: never throws
+ * into the command path.
  */
 async function alertOwner(ctx = {}, reason, config = {}, client = null) {
   const { from = {}, chat = {}, command = '' } = ctx;
   if (!client || !config.ownerId) return false;
 
+  const title = alertTitle(reason);
+
   const text = [
-    'Unauthorized bot access',
+    title,
     '',
     `Chat ID: ${escapeHtmlAll(chat.id ?? '-')}`,
     `Chat type: ${escapeHtmlAll(chat.type ?? '-')}`,
@@ -129,7 +144,10 @@ async function alertOwner(ctx = {}, reason, config = {}, client = null) {
     }
 
     await client.sendMessage(config.ownerId, text, options);
-    logger.warn({ chatId: chat.id, userId: from.id, command, reason }, 'bot: alerted owner about unauthorised access');
+    logger.warn(
+      { chatId: chat.id, userId: from.id, command, reason, title },
+      'bot: owner alert sent'
+    );
     return true;
   } catch (err) {
     logger.error({ err, chatId: chat.id, userId: from.id }, 'bot: failed to alert owner');
@@ -161,6 +179,7 @@ module.exports = {
   DENY,
   isOwner,
   resolveAuthority,
+  alertTitle,
   alertOwner,
   enforce,
   shouldAlert,

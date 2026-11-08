@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { resolveAuthority, shouldAlert, pruneAlertCache, resetAlertCache, alertOwner, chatDeepLink, DENY } from '../services/bot/guard.js';
+import { resolveAuthority, shouldAlert, pruneAlertCache, resetAlertCache, alertTitle, alertOwner, chatDeepLink, DENY } from '../services/bot/guard.js';
 import { loadConfig, parseAllowlist, parsePositiveNumber, parseExpiredStatuses, validateConfig } from '../services/bot/config.js';
 import { EXPIRED_STATUSES } from '../controllers/botWebhookController.js';
 
@@ -273,6 +273,15 @@ describe('denial messages', () => {
   });
 });
 
+describe('alertTitle', () => {
+  it('labels gateway failures separately from access denials', () => {
+    expect(alertTitle('gateway_error: Request Parameter [appId] Exception')).toBe('⚠️ Payment gateway error');
+    expect(alertTitle('gateway_request_error: timeout')).toBe('⚠️ Payment gateway error');
+    expect(alertTitle('dm_not_allowed')).toBe('Unauthorized bot access');
+    expect(alertTitle('blocked')).toBe('Unauthorized bot access');
+  });
+});
+
 describe('alertOwner', () => {
   const ctx = {
     from: { id: 7705978345, username: 'CCTVPay168', first_name: '白骨精' },
@@ -288,11 +297,22 @@ describe('alertOwner', () => {
     expect(sendMessage).toHaveBeenCalledTimes(1);
     const [chatId, text, options] = sendMessage.mock.calls[0];
     expect(chatId).toBe(123);
-    expect(text).toContain('Unauthorized bot access');
+    expect(text).toContain('Payment gateway error');
+    expect(text).not.toContain('Unauthorized bot access');
     expect(options.parse_mode).toBe('HTML');
     expect(options.reply_markup.inline_keyboard.flat()).toEqual([
       { text: '💬 Message user', url: 'tg://user?id=7705978345' },
     ]);
+  });
+
+  it('keeps the unauthorized title for access denials', async () => {
+    const sendMessage = vi.fn().mockResolvedValue(true);
+
+    await alertOwner(ctx, 'dm_not_allowed', { ownerId: 123 }, { sendMessage });
+
+    const text = sendMessage.mock.calls[0][1];
+    expect(text).toContain('Unauthorized bot access');
+    expect(text).not.toContain('Payment gateway error');
   });
 
   it('adds an Open group button for a supergroup id', async () => {
