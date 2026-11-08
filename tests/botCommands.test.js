@@ -33,6 +33,16 @@ describe('group command authorization', () => {
     });
   });
 
+  it('registers /pl with its date and cost arguments', () => {
+    expect(ALL_COMMANDS.has('/pl')).toBe(true);
+    expect(parseCommand('/pl 23/11/26 107')).toEqual({
+      command: '/pl',
+      args: ['23/11/26', '107'],
+      unknown: false,
+    });
+    expect(parseCommand('/pl@SomeBot 23/11/26 107').args).toEqual(['23/11/26', '107']);
+  });
+
   it('allows group commands for any member when the group is active', () => {
     expect(
       getGroupAccessDenial('/balance', {

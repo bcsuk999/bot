@@ -9,6 +9,7 @@ const logger = require('../utils/logger');
 
 const UID_ALLOCATION_ATTEMPTS = 25;
 const UID_SAVE_ATTEMPTS = 5;
+const GROUP_TITLE_MAX = 128;
 
 function createApprovalError(msg) {
   const err = new Error(msg);
@@ -529,6 +530,61 @@ async function setGroupStatus(groupId, status, { remark, changedBy } = {}) {
   return group;
 }
 
+function normalizeGroupTitle(title) {
+  const value = title == null ? '' : String(title).trim();
+  if (!value) throw createApprovalError('title cannot be empty');
+  if (value.length > GROUP_TITLE_MAX) {
+    throw createApprovalError(`title must be at most ${GROUP_TITLE_MAX} characters`);
+  }
+  return value;
+}
+
+// null clears the rate; anything else must be a positive number.
+function normalizeExchangeRate(rate) {
+  if (rate == null || rate === '') return null;
+  const value = Number(rate);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw createApprovalError('exchangeRate must be a number greater than 0');
+  }
+  return value;
+}
+
+/**
+ * Admin edit of a group's descriptive fields. Currently the display name and
+ * the /pl exchange rate (INR per 1 USDT). Accepts a Telegram group id or a
+ * 5-digit uid, like every other admin group route.
+ */
+async function updateGroupDetails(value, { title, exchangeRate, changedBy } = {}) {
+  if (title === undefined && exchangeRate === undefined) {
+    throw createApprovalError('Provide title and/or exchangeRate');
+  }
+
+  const group = await resolveGroup(value);
+  if (!group) {
+    const err = new Error('Group not found');
+    err.status = 404;
+    throw err;
+  }
+  if (!group.uid) await assignGroupUid(group);
+
+  const fields = [];
+  if (title !== undefined) {
+    group.title = normalizeGroupTitle(title);
+    fields.push('title');
+  }
+  if (exchangeRate !== undefined) {
+    group.exchangeRate = normalizeExchangeRate(exchangeRate);
+    fields.push('exchangeRate');
+  }
+  await group.save();
+
+  logger.info(
+    { groupId: group.groupId, uid: group.uid, fields, changedBy: changedBy ?? null },
+    'bot: group details updated'
+  );
+  return group;
+}
+
 module.exports = {
   registerGroup,
   getGroupByGroupId,
@@ -548,4 +604,8 @@ module.exports = {
   listGroups,
   listTransactions,
   setGroupStatus,
+  updateGroupDetails,
+  normalizeGroupTitle,
+  normalizeExchangeRate,
+  GROUP_TITLE_MAX,
 };

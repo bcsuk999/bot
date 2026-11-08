@@ -12,14 +12,15 @@ const GROUP_LINES = [
 
 const REG_LINE = '/reg     - Register a group (run it inside the group)';
 const INFO_LINE = '/info <message> - Notify all active registered groups';
+const PL_LINE = '/pl <DD/MM/YY> <cost> - Group profit/loss report';
 
 function helpText({ isOwner = false } = {}) {
   const lines = ['Commands:'];
-  if (isOwner) lines.push(REG_LINE, INFO_LINE);
+  if (isOwner) lines.push(REG_LINE, INFO_LINE, PL_LINE);
   lines.push(...GROUP_LINES);
   return lines.join('\n');
 }
 
 const HELP = helpText();
 
-module.exports = { HELP, helpText, REG_LINE, INFO_LINE, GROUP_LINES };
+module.exports = { HELP, helpText, REG_LINE, INFO_LINE, PL_LINE, GROUP_LINES };

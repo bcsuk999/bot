@@ -1,0 +1,257 @@
+// Group profit/loss report behind /pl.
+//
+// One report covers every active group for a single IST day:
+//   /pl 23/11/26 107      (day, cost we pay per 1 USDT in INR)
+//
+// P&L per group = (((rate - cost) / rate) - 0.056) * that day's deposit
+// where `rate` is the admin-set group exchange rate (INR per 1 USDT) and
+// 0.056 is the 5.6% payment gateway charge.
+
+const BotOrder = require('../../models/BotOrder');
+const TelegramGroup = require('../../models/TelegramGroup');
+const { IST_OFFSET_MIN, formatInr } = require('./format');
+
+const GATEWAY_FEE_RATE = 0.056;
+// Telegram hard-caps a message at 4096 chars. Keep a little headroom.
+const TELEGRAM_MESSAGE_LIMIT = 4096;
+const CHUNK_LIMIT = 4000;
+
+function toNumber(value) {
+  if (value == null) return 0;
+  const n = typeof value === 'object' && value.toString ? parseFloat(value.toString()) : Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function pad2(value) {
+  return String(value).padStart(2, '0');
+}
+
+/**
+ * Parse `DD/MM/YY` (or `DD/MM/YYYY`) into the IST day it names.
+ * Returns null for anything that is not a real calendar date.
+ */
+function parseIstDate(input) {
+  const match = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/.exec(String(input ?? '').trim());
+  if (!match) return null;
+
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = match[3].length === 2 ? 2000 + Number(match[3]) : Number(match[3]);
+
+  const utcMidnight = Date.UTC(year, month - 1, day);
+  const check = new Date(utcMidnight);
+  if (
+    check.getUTCFullYear() !== year ||
+    check.getUTCMonth() !== month - 1 ||
+    check.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  const start = new Date(utcMidnight - IST_OFFSET_MIN * 60 * 1000);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+
+  return {
+    start,
+    end,
+    label: `${pad2(day)}/${pad2(month)}/${year}`,
+  };
+}
+
+/**
+ * Validate the two /pl arguments.
+ * @returns {{ok:true,start:Date,end:Date,label:string,cost:number}|{ok:false,text:string}}
+ */
+function parsePlArgs(args = []) {
+  const [dateArg, costArg] = args;
+  if (!dateArg || costArg == null) {
+    return { ok: false, text: 'Usage: /pl <DD/MM/YY> <cost per USDT>' };
+  }
+
+  const day = parseIstDate(dateArg);
+  if (!day) {
+    return { ok: false, text: 'Invalid date. Use DD/MM/YY, e.g. /pl 23/11/26 107' };
+  }
+
+  const cost = Number(costArg);
+  if (!Number.isFinite(cost) || cost <= 0) {
+    return { ok: false, text: 'Invalid cost. Use a positive number, e.g. 107' };
+  }
+
+  return { ok: true, ...day, cost };
+}
+
+/**
+ * Profit/loss for one group. Returns null when the group has no rate, so the
+ * report can say "rate not set" instead of showing a misleading number.
+ */
+function computePnl({ exchangeRate, cost, deposit }) {
+  const rate = Number(exchangeRate);
+  if (!Number.isFinite(rate) || rate <= 0) return null;
+
+  const margin = (rate - Number(cost)) / rate - GATEWAY_FEE_RATE;
+  const depositValue = Number(deposit) || 0;
+  return Math.round(margin * depositValue * 100) / 100;
+}
+
+function formatSignedInr(value) {
+  const n = Number(value) || 0;
+  return n < 0 ? `-${formatInr(Math.abs(n))}` : `+${formatInr(n)}`;
+}
+
+/**
+ * Aggregate every active group's deposits and payouts for the window.
+ *
+ * - deposit: BotOrder status success, direction != 'debit'
+ * - payout:  BotOrder status success, direction == 'debit' (manual adjustment)
+ * Totals are lifetime; "today" figures are limited to [start, end).
+ */
+async function getGroupPnlRows({ start, end }) {
+  const [rows, groups] = await Promise.all([
+    BotOrder.aggregate([
+      { $match: { status: 'success' } },
+      {
+        $group: {
+          _id: '$group',
+          totalDeposit: {
+            $sum: { $cond: [{ $ne: ['$direction', 'debit'] }, '$amount', 0] },
+          },
+          todayDeposit: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $ne: ['$direction', 'debit'] },
+                    { $gte: ['$createdAt', start] },
+                    { $lt: ['$createdAt', end] },
+                  ],
+                },
+                '$amount',
+                0,
+              ],
+            },
+          },
+          totalPayout: {
+            $sum: { $cond: [{ $eq: ['$direction', 'debit'] }, '$amount', 0] },
+          },
+          todayPayout: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$direction', 'debit'] },
+                    { $gte: ['$createdAt', start] },
+                    { $lt: ['$createdAt', end] },
+                  ],
+                },
+                '$amount',
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]),
+    TelegramGroup.find({ status: 'active' })
+      .select('groupId uid title exchangeRate createdAt')
+      .sort({ createdAt: 1, _id: 1 })
+      .lean({ getters: true }),
+  ]);
+
+  const byGroup = new Map(rows.map((row) => [String(row._id), row]));
+
+  return groups.map((group) => {
+    const agg = byGroup.get(String(group._id)) || {};
+    return {
+      groupId: group.groupId,
+      uid: group.uid || null,
+      title: group.title || '',
+      exchangeRate: group.exchangeRate == null ? null : toNumber(group.exchangeRate),
+      todayDeposit: toNumber(agg.todayDeposit),
+      totalDeposit: toNumber(agg.totalDeposit),
+      todayPayout: toNumber(agg.todayPayout),
+      totalPayout: toNumber(agg.totalPayout),
+    };
+  });
+}
+
+function renderPnlBlock(row, cost) {
+  const pnl = computePnl({
+    exchangeRate: row.exchangeRate,
+    cost,
+    deposit: row.todayDeposit,
+  });
+
+  const uidLine = `UID: ${row.uid || '-'}${row.title ? ` (${row.title})` : ''}`;
+  const lines = [
+    uidLine,
+    `Todays deposit: ${formatInr(row.todayDeposit)}`,
+    `Total deposit: ${formatInr(row.totalDeposit)}`,
+    `Total payout: ${formatInr(row.totalPayout)}`,
+    `Todays payout: ${formatInr(row.todayPayout)}`,
+  ];
+
+  if (pnl == null) {
+    lines.push('Profit/Loss: rate not set');
+  } else {
+    lines.push(`Profit/Loss: ${formatSignedInr(pnl)}`);
+  }
+
+  return lines.join('\n');
+}
+
+function renderPnlReport({ dateLabel, cost, rows = [] }) {
+  const head = `P&L — ${dateLabel} (cost ${formatInr(cost)}/USDT)`;
+  if (!rows.length) return `${head}\n\nNo active groups.`;
+
+  return [head, '', rows.map((row) => renderPnlBlock(row, cost)).join('\n\n')].join('\n');
+}
+
+/**
+ * Split a report into Telegram-sized chunks. Prefers block boundaries, and
+ * hard-splits a single oversized block so no chunk ever exceeds the limit.
+ */
+function chunkText(text, limit = CHUNK_LIMIT) {
+  const value = String(text ?? '');
+  if (value.length <= limit) return [value];
+
+  const chunks = [];
+  let current = '';
+
+  for (const block of value.split('\n\n')) {
+    const next = current ? `${current}\n\n${block}` : block;
+
+    if (next.length <= limit) {
+      current = next;
+      continue;
+    }
+
+    if (current) chunks.push(current);
+
+    if (block.length > limit) {
+      for (let i = 0; i < block.length; i += limit) {
+        chunks.push(block.slice(i, i + limit));
+      }
+      current = '';
+    } else {
+      current = block;
+    }
+  }
+
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+module.exports = {
+  GATEWAY_FEE_RATE,
+  TELEGRAM_MESSAGE_LIMIT,
+  CHUNK_LIMIT,
+  parseIstDate,
+  parsePlArgs,
+  computePnl,
+  getGroupPnlRows,
+  renderPnlBlock,
+  renderPnlReport,
+  chunkText,
+  formatSignedInr,
+};

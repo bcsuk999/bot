@@ -86,6 +86,14 @@ const telegramGroupSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    // Admin-set rate used only by the /pl profit/loss report, in INR per 1 USDT
+    // (e.g. 160). Nullable: groups registered before this field existed read as
+    // "not set" and /pl reports "rate not set" for them.
+    exchangeRate: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: null,
+      get: (v) => (v ? parseFloat(v.toString()) : v),
+    },
   },
   {
     timestamps: true,

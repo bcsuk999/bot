@@ -63,6 +63,8 @@ function serializeGroup(g, balance) {
     totalDeposits: g.totalDeposits,
     totalCredited: toNum(g.totalCredited),
     totalFailed: g.totalFailed,
+    // Admin-set rate used by /pl, in INR per 1 USDT. null = not set.
+    exchangeRate: g.exchangeRate == null ? null : toNum(g.exchangeRate),
     registeredBy: g.registeredBy,
     createdAt: g.createdAt,
     lastActiveAt: g.lastActiveAt,
@@ -182,6 +184,29 @@ exports.suspendGroup = async (req, res) => changeGroupStatus(req, res, 'suspende
 
 // POST /api/bot/groups/:groupId/unban    { remark }
 exports.unbanGroup = async (req, res) => changeGroupStatus(req, res, 'active');
+
+// PATCH /api/bot/groups/:groupId  { title?, exchangeRate? }
+// Edit the group's display name and/or the /pl exchange rate (INR per 1 USDT).
+// Accepts a group id or a 5-digit uid, like every other admin group route.
+exports.updateGroup = async (req, res) => {
+  try {
+    const { title, exchangeRate } = req.body || {};
+    const group = await botGroupService.updateGroupDetails(req.params.groupId, {
+      title,
+      exchangeRate,
+      changedBy: req.user?.userid ?? null,
+    });
+    const balance = await botGroupService.getGroupBalance(group._id);
+
+    return res.json({
+      success: true,
+      msg: 'Group updated',
+      data: serializeGroup(group, balance),
+    });
+  } catch (err) {
+    return fail(res, err, 'Failed to update group');
+  }
+};
 
 // POST /api/bot/groups/:groupId/adjust  (accepts a group id or a 5-digit uid)
 exports.adjustGroup = async (req, res) => {

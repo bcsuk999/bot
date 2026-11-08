@@ -25,6 +25,11 @@ describe('owner command menu', () => {
     expect(OWNER_MENU.map((c) => c.command)).toContain('info');
     expect(GROUP_MENU.map((c) => c.command)).not.toContain('info');
   });
+
+  it('advertises /pl only in the owner menu', () => {
+    expect(OWNER_MENU.map((c) => c.command)).toContain('pl');
+    expect(GROUP_MENU.map((c) => c.command)).not.toContain('pl');
+  });
 });
 
 describe('setupCommandMenus', () => {
@@ -72,6 +77,11 @@ describe('helpText', () => {
   it('shows /info only in owner help', () => {
     expect(helpText({ isOwner: true })).toContain('/info <message>');
     expect(helpText()).not.toContain('/info');
+  });
+
+  it('shows /pl only in owner help', () => {
+    expect(helpText({ isOwner: true })).toContain('/pl <DD/MM/YY>');
+    expect(helpText()).not.toContain('/pl');
   });
 
   it('shows /how in group and owner help', () => {

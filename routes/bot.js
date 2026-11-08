@@ -7,6 +7,7 @@ const {
   listGroups,
   getGroup,
   updateGroupStatus,
+  updateGroup,
   banGroup,
   suspendGroup,
   unbanGroup,
@@ -25,6 +26,7 @@ router.get('/health', health);
 router.get('/groups', auth, requireAdmin, listGroups);
 router.get('/groups/:groupId', auth, requireAdmin, getGroup);
 router.patch('/groups/:groupId/status', auth, requireAdmin, updateGroupStatus);
+router.patch('/groups/:groupId', auth, requireAdmin, updateGroup);
 router.post('/groups/:groupId/ban', auth, requireAdmin, banGroup);
 router.post('/groups/:groupId/suspend', auth, requireAdmin, suspendGroup);
 router.post('/groups/:groupId/unban', auth, requireAdmin, unbanGroup);

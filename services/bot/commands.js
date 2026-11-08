@@ -13,12 +13,13 @@ const { cmdStatus } = require('./handlers/status');
 const { cmdStart } = require('./handlers/start');
 const { cmdInfo } = require('./handlers/info');
 const { cmdHow } = require('./handlers/how');
+const { cmdPl } = require('./handlers/pl');
 const { sendProcessingMessage, sendProcessingReply } = require('./reply');
 const logger = require('../../utils/logger');
 
 // Commands that need a registered group with active status.
 const GROUP_COMMANDS = new Set(['/balance', '/d', '/daily', '/status']);
-const ALL_COMMANDS = new Set(['/start', '/reg', '/balance', '/d', '/daily', '/status', '/info', '/how']);
+const ALL_COMMANDS = new Set(['/start', '/reg', '/balance', '/d', '/daily', '/status', '/info', '/how', '/pl']);
 const REG_OWNER_ONLY = 'Only the bot owner can register a group. Ask the owner to run /reg here.';
 
 // The "/" menus Telegram renders per chat scope (Bot API setMyCommands).
@@ -49,6 +50,7 @@ const OWNER_MENU = [
   { command: 'start', description: 'Show bot info and command list' },
   { command: 'reg', description: 'Register a group (run it inside the group)' },
   { command: 'info', description: 'Send a message to all active groups' },
+  { command: 'pl', description: 'Group profit/loss: /pl <DD/MM/YY> <cost>' },
   { command: 'how', description: 'How to create a deposit and use the bot' },
 ];
 
@@ -108,6 +110,16 @@ async function handleMessage(msg, client, config) {
   const reply = (text, options) =>
     sendProcessingReply(client, chat.id, processingMessage, text, options);
 
+  // A report can exceed Telegram's 4096-char limit. Edit the processing message
+  // with the first chunk, then send the rest as follow-up messages.
+  const sendChunks = async (chunks) => {
+    let sent = null;
+    for (let i = 0; i < chunks.length; i += 1) {
+      sent = i === 0 ? await reply(chunks[i]) : await client.sendMessage(chat.id, chunks[i]);
+    }
+    return sent;
+  };
+
   // 1. Restrict private chats and alert the owner when needed.
   const decision = await enforce(ctx, config, client);
   if (!decision.allowed) {
@@ -116,6 +128,11 @@ async function handleMessage(msg, client, config) {
   }
 
   const isOwnerDm = chat.type === 'private' && decision.reason === 'owner';
+
+  // /pl spans every group and exposes cost margins, so it is owner-DM only.
+  if (command === '/pl' && !isOwnerDm) {
+    return reply('Only the bot owner can use /pl.');
+  }
 
   // 2. Unknown command -> help. Non-command DMs from the owner -> help hint.
   if (!parsed || parsed.unknown) {
@@ -142,6 +159,15 @@ async function handleMessage(msg, client, config) {
       } catch (err) {
         logger.error({ err, userId: from.id }, 'bot: info broadcast failed');
         return reply('Unable to send the info broadcast. Please try again.');
+      }
+    }
+    if (command === '/pl') {
+      try {
+        const result = await cmdPl(ctx);
+        return sendChunks(result.chunks || [result.text]);
+      } catch (err) {
+        logger.error({ err, userId: from.id }, 'bot: /pl report failed');
+        return reply('Unable to build the P&L report. Please try again.');
       }
     }
     if (command === '/how') {
