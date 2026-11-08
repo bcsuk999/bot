@@ -5,7 +5,7 @@ const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
 
 describe('buildSuccessNotice', () => {
   it('shows the completed-order slip', () => {
-    const text = buildSuccessNotice({ orderId: 'B20260928093925967924200', amount: 400, balance: 12900 });
+    const { text } = buildSuccessNotice({ orderId: 'B20260928093925967924200', amount: 400, balance: 12900 });
     expect(text).toBe(
       [
         'Order completed 💕',
@@ -19,22 +19,29 @@ describe('buildSuccessNotice', () => {
     );
   });
 
+  it('adds a one-tap copy button for the order number', () => {
+    const { options } = buildSuccessNotice({ orderId: 'B20260928093925967924200', amount: 400 });
+    expect(options.reply_markup.inline_keyboard.flat()).toEqual([
+      { text: 'Copy Order No', copy_text: { text: 'B20260928093925967924200' } },
+    ]);
+  });
+
   it('labels a debit adjustment as a payout', () => {
-    const text = buildSuccessNotice({ orderId: 'B1', amount: 20, direction: 'debit' });
+    const { text } = buildSuccessNotice({ orderId: 'B1', amount: 20, direction: 'debit' });
     expect(text).toContain('type: PAYOUT🔺');
   });
 
   it('labels a credit (including a bot deposit) as a payin', () => {
-    expect(buildSuccessNotice({ orderId: 'B1', amount: 20, direction: 'credit' })).toContain('type: PAYIN🔻');
-    expect(buildSuccessNotice({ orderId: 'B1', amount: 20 })).toContain('type: PAYIN🔻');
+    expect(buildSuccessNotice({ orderId: 'B1', amount: 20, direction: 'credit' }).text).toContain('type: PAYIN🔻');
+    expect(buildSuccessNotice({ orderId: 'B1', amount: 20 }).text).toContain('type: PAYIN🔻');
   });
 
   it('omits the balance - it is read back with /balance', () => {
-    expect(buildSuccessNotice({ orderId: 'B1', amount: 400 })).not.toContain('Balance');
+    expect(buildSuccessNotice({ orderId: 'B1', amount: 400 }).text).not.toContain('Balance');
   });
 
   it('uses the heart, type arrow and checkmark as its only emoji', () => {
-    const text = buildSuccessNotice({ orderId: 'B1', amount: 400 });
+    const { text } = buildSuccessNotice({ orderId: 'B1', amount: 400 });
     expect(text.match(new RegExp(EMOJI, 'gu'))).toEqual(['💕', '🔻', '✅']);
   });
 });

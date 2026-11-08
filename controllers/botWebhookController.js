@@ -22,14 +22,14 @@ function expiredStatuses() {
   return Array.isArray(configured) ? configured : EXPIRED_STATUSES;
 }
 
-async function notifyGroup(groupId, text) {
+async function notifyGroup(groupId, text, options = {}) {
   const client = getClient();
   if (!client) {
     logger.warn({ groupId }, 'bot: no client, skipped group notification');
     return;
   }
   try {
-    await client.sendMessage(groupId, text);
+    await client.sendMessage(groupId, text, options);
   } catch (err) {
     // Never throw into the webhook - it must still return 200.
     logger.error({ err, groupId }, 'bot: failed to post group notification');
@@ -44,7 +44,7 @@ async function notifyGroup(groupId, text) {
 // The type line makes the two indistinguishable-looking slips tell apart.
 function buildSuccessNotice({ orderId, amount, direction }) {
   const type = direction === 'debit' ? 'PAYOUT🔺' : 'PAYIN🔻';
-  return [
+  const text = [
     'Order completed 💕',
     '',
     'Order type: Payment Order',
@@ -53,6 +53,14 @@ function buildSuccessNotice({ orderId, amount, direction }) {
     'Status: Completed✅',
     `Amount: ${formatAmount(amount)}`,
   ].join('\n');
+
+  const options = {
+    reply_markup: {
+      inline_keyboard: [[{ text: 'Copy Order No', copy_text: { text: String(orderId) } }]],
+    },
+  };
+
+  return { text, options };
 }
 
 function buildFailedNotice({ orderId, amount, reason }) {
@@ -66,10 +74,8 @@ function buildFailedNotice({ orderId, amount, reason }) {
 }
 
 async function notifySuccess(order, credited) {
-  await notifyGroup(
-    order.groupId,
-    buildSuccessNotice({ orderId: order.orderId, amount: credited, direction: order.direction })
-  );
+  const slip = buildSuccessNotice({ orderId: order.orderId, amount: credited, direction: order.direction });
+  await notifyGroup(order.groupId, slip.text, slip.options);
 
   await markDepositSlipCompleted(order, credited);
 }
