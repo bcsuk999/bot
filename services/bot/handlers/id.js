@@ -16,10 +16,10 @@ function buildIdReply(group = {}) {
 
   const buttons = [];
   if (group.groupId != null && group.groupId !== '') {
-    buttons.push({ text: '📋 Copy Group ID', copy_text: { text: groupId } });
+    buttons.push({ text: 'Copy Group ID', copy_text: { text: groupId } });
   }
   if (group.uid != null && group.uid !== '') {
-    buttons.push({ text: '📋 Copy UID', copy_text: { text: uid } });
+    buttons.push({ text: 'Copy UID', copy_text: { text: uid } });
   }
 
   const options = { parse_mode: 'HTML' };

@@ -14,8 +14,8 @@ describe('buildIdReply', () => {
     const { options } = buildIdReply(group);
     expect(options.parse_mode).toBe('HTML');
     expect(options.reply_markup.inline_keyboard.flat()).toEqual([
-      { text: '📋 Copy Group ID', copy_text: { text: '-1001234567890' } },
-      { text: '📋 Copy UID', copy_text: { text: '32045' } },
+      { text: 'Copy Group ID', copy_text: { text: '-1001234567890' } },
+      { text: 'Copy UID', copy_text: { text: '32045' } },
     ]);
   });
 
@@ -23,7 +23,7 @@ describe('buildIdReply', () => {
     const { text, options } = buildIdReply({ groupId: '-1001234567890' });
     expect(text).toContain('UID: <code>-</code>');
     expect(options.reply_markup.inline_keyboard.flat()).toEqual([
-      { text: '📋 Copy Group ID', copy_text: { text: '-1001234567890' } },
+      { text: 'Copy Group ID', copy_text: { text: '-1001234567890' } },
     ]);
   });
 
