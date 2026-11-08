@@ -27,6 +27,4 @@ const commissionConfigSchema = new mongoose.Schema(
   }
 );
 
-commissionConfigSchema.index({ isActive: 1 });
-
 module.exports = mongoose.model('CommissionConfig', commissionConfigSchema);

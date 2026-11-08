@@ -44,7 +44,6 @@ withdrawal: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     default: null,
-    sparse: true,
   },
 }, { timestamps: true });
 
