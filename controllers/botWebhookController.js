@@ -4,7 +4,7 @@ const botGroupService = require('../services/botGroupService');
 const BotOrder = require('../models/BotOrder');
 const TelegramGroup = require('../models/TelegramGroup');
 const { getClient, getConfig } = require('../services/bot/client');
-const { formatAmount, formatInr } = require('../services/bot/format');
+const { formatAmount, formatInr, escapeHtml } = require('../services/bot/format');
 const { buildDepositReply, DEPOSIT_EXPIRY_MINUTES } = require('../services/bot/handlers/deposit');
 const logger = require('../utils/logger');
 
@@ -44,17 +44,19 @@ async function notifyGroup(groupId, text, options = {}) {
 // The type line makes the two indistinguishable-looking slips tell apart.
 function buildSuccessNotice({ orderId, amount, direction }) {
   const type = direction === 'debit' ? 'PAYOUT🔺' : 'PAYIN🔻';
+  const safeOrderId = escapeHtml(orderId);
   const text = [
     'Order completed 💕',
     '',
     'Order type: Payment Order',
     `type: ${type}`,
-    `Order No: ${orderId}`,
+    `Order No: <code>${safeOrderId}</code>`,
     'Status: Completed✅',
     `Amount: ${formatAmount(amount)}`,
   ].join('\n');
 
   const options = {
+    parse_mode: 'HTML',
     reply_markup: {
       inline_keyboard: [[{ text: 'Copy Order No', copy_text: { text: String(orderId) } }]],
     },

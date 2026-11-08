@@ -12,7 +12,7 @@ describe('buildSuccessNotice', () => {
         '',
         'Order type: Payment Order',
         'type: PAYIN🔻',
-        'Order No: B20260928093925967924200',
+        'Order No: <code>B20260928093925967924200</code>',
         'Status: Completed✅',
         'Amount: 400.00',
       ].join('\n')
