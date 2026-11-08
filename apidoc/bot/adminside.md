@@ -164,7 +164,8 @@ Example:
 
 Rules:
 - Owner-only; refused in groups and for non-owner DMs.
-- Only groups with `status: "active"` are included. Banned/suspended groups are excluded.
+- Only groups with `status: "active"` **and** an exchange rate set are included.
+  Banned/suspended groups and groups with no rate are excluded.
 - Date is an IST day; `DD/MM/YY` or `DD/MM/YYYY`.
 - Per group:
   ```
@@ -183,8 +184,10 @@ Rules:
   (((exchangeRate - cost) / exchangeRate) - 0.056) × todays deposit
   ```
 - The report ends with a summary of all groups **that have a rate set**. Groups
-  with no rate are excluded from every summary figure and show
-  `Profit/Loss: rate not set` in their own block.
+  without a rate are excluded from the report entirely — no per-group block and
+  no contribution to any summary figure.
+- If no active group has a rate set, the report replies
+  `No active groups with an exchange rate set.`
 - Long reports are split across multiple Telegram messages.
 
 ---

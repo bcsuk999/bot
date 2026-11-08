@@ -165,7 +165,11 @@ async function getGroupPnlRows({ start, end }) {
         },
       },
     ]),
-    TelegramGroup.find({ status: 'active' })
+    TelegramGroup.find({
+      status: 'active',
+      // Groups with no rate are excluded from /pl entirely.
+      exchangeRate: { $ne: null, $gt: 0 },
+    })
       .select('groupId uid title exchangeRate createdAt')
       .sort({ createdAt: 1, _id: 1 })
       .lean({ getters: true }),
@@ -258,12 +262,18 @@ function renderPnlSummary(totals) {
   ].join('\n');
 }
 
+function hasExchangeRate(row) {
+  const rate = Number(row?.exchangeRate);
+  return Number.isFinite(rate) && rate > 0;
+}
+
 function renderPnlReport({ dateLabel, cost, rows = [] }) {
   const head = `P&L — ${dateLabel} (cost ${formatInr(cost)}/USDT)`;
-  if (!rows.length) return `${head}\n\nNo active groups.`;
+  const rated = rows.filter(hasExchangeRate);
+  if (!rated.length) return `${head}\n\nNo active groups with an exchange rate set.`;
 
-  const blocks = rows.map((row) => renderPnlBlock(row, cost));
-  blocks.push(renderPnlSummary(summarizeRatedRows(rows, cost)));
+  const blocks = rated.map((row) => renderPnlBlock(row, cost));
+  blocks.push(renderPnlSummary(summarizeRatedRows(rated, cost)));
 
   return [head, '', blocks.join('\n\n')].join('\n');
 }
@@ -315,6 +325,7 @@ module.exports = {
   renderPnlReport,
   summarizeRatedRows,
   renderPnlSummary,
+  hasExchangeRate,
   chunkText,
   formatSignedInr,
   formatPnlWithEmoji,

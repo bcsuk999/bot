@@ -122,7 +122,7 @@ describe('renderPnlBlock', () => {
 describe('renderPnlReport', () => {
   it('lists no groups when there are none', () => {
     const text = renderPnlReport({ dateLabel: '23/11/2026', cost: 107, rows: [] });
-    expect(text).toContain('No active groups');
+    expect(text).toContain('No active groups with an exchange rate set');
   });
 
   it('puts one block per group under the date header', () => {
@@ -133,8 +133,19 @@ describe('renderPnlReport', () => {
     const text = renderPnlReport({ dateLabel: '23/11/2026', cost: 107, rows });
     expect(text).toContain('P&L — 23/11/2026 (cost ₹107.00/USDT)');
     expect(text).toContain('UID: 11111 | 160  (A)');
-    expect(text).toContain('UID: 22222 | -  (B)');
+    expect(text).not.toContain('UID: 22222');
     expect(text.split('\n\n').length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('excludes groups without an exchange rate entirely', () => {
+    const rows = [
+      { uid: '22222', title: 'B', exchangeRate: null, todayDeposit: 5000, totalDeposit: 5000, todayPayout: 0, totalPayout: 0 },
+      { uid: '33333', title: 'C', exchangeRate: 0, todayDeposit: 5000, totalDeposit: 5000, todayPayout: 0, totalPayout: 0 },
+    ];
+    const text = renderPnlReport({ dateLabel: '23/11/2026', cost: 107, rows });
+    expect(text).toContain('No active groups with an exchange rate set');
+    expect(text).not.toContain('UID: 22222');
+    expect(text).not.toContain('UID: 33333');
   });
 
   it('ends with totals that exclude groups without a rate', () => {
