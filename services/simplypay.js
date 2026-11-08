@@ -40,9 +40,6 @@ function generateSign(params, appSecret) {
     paramsString += `&key=${appSecret}`;
   }
   const sign = crypto.createHash('sha256').update(paramsString, 'utf8').digest('hex');
-  // Never log the app secret. The signed field names and the resulting sign are
-  // enough to compare our value with the one the gateway returns.
-  logger.info({ fields: paramsKeys, sign }, 'SimplyPay sign generated');
   return sign;
 }
 
@@ -94,10 +91,6 @@ async function createPaymentOrder({ merOrderNo, amount, returnUrl, notifyUrl, at
     extra: extra || {},
   };
   params.sign = generateSign(params, SECRET);
-  logger.info(
-    { merOrderNo, amount: params.amount, attach: params.attach, sign: params.sign },
-    'SimplyPay create order'
-  );
   return apiCall('/payment/order/create', params);
 }
 
@@ -112,10 +105,6 @@ async function createPayoutOrder({ merOrderNo, amount, notifyUrl, attach, extra 
     extra: extra || {},
   };
   params.sign = generateSign(params, SECRET);
-  logger.info(
-    { merOrderNo, amount: params.amount, attach: params.attach, sign: params.sign },
-    'SimplyPay create payout order'
-  );
   return apiCall('/payout/order/create', params);
 }
 
