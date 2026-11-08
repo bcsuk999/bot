@@ -199,20 +199,12 @@ function renderPnlBlock(row, cost) {
     deposit: row.todayDeposit,
   });
 
-  const uidLine = `UID: ${row.uid || '-'} | ${formatRate(row.exchangeRate)}`;
+  const pnlText = pnl == null ? 'rate not set' : formatPnlWithEmoji(pnl);
   const lines = [
-    uidLine,
-    `Todays deposit: ${formatInr(row.todayDeposit)}`,
-    `Total deposit: ${formatInr(row.totalDeposit)}`,
-    `Total payout: ${formatInr(row.totalPayout)}`,
-    `Todays payout: ${formatInr(row.todayPayout)}`,
+    `UID ${row.uid || '-'} | ${formatRate(row.exchangeRate)} | P/L ${pnlText}`,
+    `Today ${formatInr(row.todayDeposit)} | Total ${formatInr(row.totalDeposit)}`,
+    `Payout ${formatInr(row.totalPayout)} | Today payout ${formatInr(row.todayPayout)}`,
   ];
-
-  if (pnl == null) {
-    lines.push('Profit/Loss: rate not set');
-  } else {
-    lines.push(`Profit/Loss: ${formatPnlWithEmoji(pnl)}`);
-  }
 
   return lines.join('\n');
 }
@@ -251,12 +243,9 @@ function summarizeRatedRows(rows = [], cost) {
 
 function renderPnlSummary(totals) {
   return [
-    'All groups total',
-    `Todays deposit: ${formatInr(totals.todayDeposit)}`,
-    `Total deposit: ${formatInr(totals.totalDeposit)}`,
-    `Total payout: ${formatInr(totals.totalPayout)}`,
-    `Todays payout: ${formatInr(totals.todayPayout)}`,
-    `Profit/Loss: ${formatPnlWithEmoji(totals.pnl)}`,
+    `All groups total | P/L ${formatPnlWithEmoji(totals.pnl)}`,
+    `Today ${formatInr(totals.todayDeposit)} | Total ${formatInr(totals.totalDeposit)}`,
+    `Payout ${formatInr(totals.totalPayout)} | Today payout ${formatInr(totals.todayPayout)}`,
   ].join('\n');
 }
 

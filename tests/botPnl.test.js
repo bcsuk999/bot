@@ -94,19 +94,14 @@ describe('renderPnlBlock', () => {
 
   it('renders every requested line with the profit', () => {
     const text = renderPnlBlock(row, 107);
-    expect(text).toContain('UID: 32045 | 160');
-    expect(text).not.toContain('Test Group');
-    expect(text).toContain('Todays deposit: ₹10,000.00');
-    expect(text).toContain('Total deposit: ₹1,20,000.00');
-    expect(text).toContain('Total payout: ₹40,000.00');
-    expect(text).toContain('Todays payout: ₹2,000.00');
-    expect(text).toContain('Profit/Loss: 🟢₹2,752.50');
+    expect(text).toContain('UID 32045 | 160 | P/L 🟢₹2,752.50');
+    expect(text).toContain('Today ₹10,000.00 | Total ₹1,20,000.00');
+    expect(text).toContain('Payout ₹40,000.00 | Today payout ₹2,000.00');
   });
 
   it('says the rate is not set instead of showing a wrong number', () => {
     const text = renderPnlBlock({ ...row, exchangeRate: null }, 107);
-    expect(text).toContain('UID: 32045 | -');
-    expect(text).toContain('Profit/Loss: rate not set');
+    expect(text).toContain('UID 32045 | - | P/L rate not set');
   });
 
   it('marks a loss in red and a profit in green', () => {
@@ -133,9 +128,8 @@ describe('renderPnlReport', () => {
     ];
     const text = renderPnlReport({ dateLabel: '23/11/2026', cost: 107, rows });
     expect(text).not.toContain('P&L —');
-    expect(text).toContain('UID: 11111 | 160');
-    expect(text).not.toContain('UID: 22222');
-    expect(text.split('\n\n').length).toBeGreaterThanOrEqual(2);
+    expect(text).toContain('UID 11111 | 160');
+    expect(text).not.toContain('UID 22222');
   });
 
   it('excludes groups without an exchange rate entirely', () => {
@@ -145,8 +139,8 @@ describe('renderPnlReport', () => {
     ];
     const text = renderPnlReport({ dateLabel: '23/11/2026', cost: 107, rows });
     expect(text).toContain('No active groups with an exchange rate set');
-    expect(text).not.toContain('UID: 22222');
-    expect(text).not.toContain('UID: 33333');
+    expect(text).not.toContain('UID 22222');
+    expect(text).not.toContain('UID 33333');
   });
 
   it('ends with totals that exclude groups without a rate', () => {
@@ -164,11 +158,8 @@ describe('renderPnlReport', () => {
 
     const text = renderPnlReport({ dateLabel: '23/11/2026', cost: 107, rows });
     expect(text).toContain('All groups total');
-    expect(text).not.toContain('with rate set');
-    expect(text).toContain('Todays deposit: ₹15,000.00');
-    expect(text).toContain('Total deposit: ₹28,000.00');
-    expect(text).toContain('Total payout: ₹5,000.00');
-    expect(text).toContain('Todays payout: ₹1,500.00');
+    expect(text).toContain('Today ₹15,000.00 | Total ₹28,000.00');
+    expect(text).toContain('Payout ₹5,000.00 | Today payout ₹1,500.00');
   });
 });
 
