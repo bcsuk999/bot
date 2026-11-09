@@ -13,7 +13,7 @@ const GROUP_LINES = [
 
 const REG_LINE = '/reg     - Register a group (run it inside the group)';
 const INFO_LINE = '/info <message> - Notify all active registered groups';
-const PL_LINE = '/pl <DD/MM/YY> <cost> - Group profit/loss report';
+const PL_LINE = '/pl <t|y|w|m|DD/MM/YY> <cost> - Group profit/loss report';
 
 function helpText({ isOwner = false } = {}) {
   const lines = ['Commands:'];

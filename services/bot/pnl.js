@@ -62,23 +62,76 @@ function parseIstDate(input) {
  * Validate the two /pl arguments.
  * @returns {{ok:true,start:Date,end:Date,label:string,cost:number}|{ok:false,text:string}}
  */
+
+function periodWindow(filter) {
+  const f = String(filter || '').toLowerCase();
+  const now = new Date();
+  const offset = IST_OFFSET_MIN * 60 * 1000;
+  const todayIst = new Date(now.getTime() + offset);
+  const todayStart = new Date(
+    Date.UTC(todayIst.getUTCFullYear(), todayIst.getUTCMonth(), todayIst.getUTCDate()) - offset
+  );
+
+  if (f === 't') {
+    return { start: todayStart, end: new Date(todayStart.getTime() + 24 * 60 * 60 * 1000) };
+  }
+  if (f === 'y') {
+    return { start: new Date(todayStart.getTime() - 24 * 60 * 60 * 1000), end: todayStart };
+  }
+  if (f === 'w') {
+    const dow = todayIst.getUTCDay();
+    const daysSinceMonday = (dow + 6) % 7;
+    const mondayUtc = Date.UTC(
+      todayIst.getUTCFullYear(),
+      todayIst.getUTCMonth(),
+      todayIst.getUTCDate() - daysSinceMonday
+    );
+    const start = new Date(mondayUtc - offset);
+    return { start, end: new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000) };
+  }
+  if (f === 'm') {
+    const firstUtc = Date.UTC(todayIst.getUTCFullYear(), todayIst.getUTCMonth(), 1);
+    const start = new Date(firstUtc - offset);
+    const nextUtc = Date.UTC(todayIst.getUTCFullYear(), todayIst.getUTCMonth() + 1, 1);
+    return { start, end: new Date(nextUtc - offset) };
+  }
+  return null;
+}
+
 function parsePlArgs(args = []) {
-  const [dateArg, costArg] = args;
-  if (!dateArg || costArg == null) {
-    return { ok: false, text: 'Usage: /pl <DD/MM/YY> <cost per USDT>' };
+  const [a, b] = args;
+
+  const FILTERS = { t: true, y: true, w: true, m: true };
+
+  if (a != null && FILTERS[String(a).toLowerCase()] && b != null) {
+    const cost = Number(b);
+    if (!Number.isFinite(cost) || cost <= 0) {
+      return { ok: false, text: 'Invalid cost. Use a positive number, e.g. 107' };
+    }
+    const w = periodWindow(String(a).toLowerCase());
+    return { ok: true, start: w.start, end: w.end, cost, period: String(a).toLowerCase() };
   }
 
-  const day = parseIstDate(dateArg);
-  if (!day) {
-    return { ok: false, text: 'Invalid date. Use DD/MM/YY, e.g. /pl 23/11/26 107' };
+  if (a != null && b != null) {
+    const day = parseIstDate(a);
+    if (day) {
+      const cost = Number(b);
+      if (!Number.isFinite(cost) || cost <= 0) {
+        return { ok: false, text: 'Invalid cost. Use a positive number, e.g. 107' };
+      }
+      return { ok: true, start: day.start, end: day.end, cost, period: 'date' };
+    }
   }
 
-  const cost = Number(costArg);
-  if (!Number.isFinite(cost) || cost <= 0) {
-    return { ok: false, text: 'Invalid cost. Use a positive number, e.g. 107' };
+  if (a != null && b == null) {
+    const cost = Number(a);
+    if (Number.isFinite(cost) && cost > 0) {
+      const w = periodWindow('t');
+      return { ok: true, start: w.start, end: w.end, cost, period: 't' };
+    }
   }
 
-  return { ok: true, ...day, cost };
+  return { ok: false, text: 'Usage: /pl <t|y|w|m|DD/MM/YY> <cost per USDT>' };
 }
 
 /**
@@ -109,7 +162,8 @@ function formatPnlWithEmoji(value) {
 
 function formatRate(value) {
   const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? String(n) : '-';
+  if (!Number.isFinite(n) || n <= 0) return '-';
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
 }
 
 /**
@@ -199,14 +253,17 @@ function renderPnlBlock(row, cost) {
     deposit: row.todayDeposit,
   });
 
-  const pnlText = pnl == null ? 'rate not set' : formatPnlWithEmoji(pnl);
-  const lines = [
-    `UID ${row.uid || '-'} | ${formatRate(row.exchangeRate)} | P/L ${pnlText}`,
-    `Today ${formatInr(row.todayDeposit)} | Total ${formatInr(row.totalDeposit)}`,
-    `Payout ${formatInr(row.totalPayout)} | Today payout ${formatInr(row.todayPayout)}`,
-  ];
+  const pnlLine =
+    pnl == null
+      ? '  P/L : rate not set'
+      : `  P/L : \u{1F495} ${pnl < 0 ? '-' : ''}${formatInr(Math.abs(pnl))}`;
 
-  return lines.join('\n');
+  return [
+    `UID ${row.uid || '-'} | U ${formatRate(row.exchangeRate)}`,
+    `[ Payin: ${formatInr(row.todayDeposit)} | Total: ${formatInr(row.totalDeposit)} ]`,
+    `[ Payout: ${formatInr(row.todayPayout)} | Total: ${formatInr(row.totalPayout)} ]`,
+    pnlLine,
+  ].join('\n');
 }
 
 // Totals across groups that have an exchange rate set. Groups without a rate
@@ -242,10 +299,16 @@ function summarizeRatedRows(rows = [], cost) {
 }
 
 function renderPnlSummary(totals) {
+  const pnlLine =
+    totals.groups === 0
+      ? '  P/L : rate not set'
+      : `  P/L : \u{1F495} ${totals.pnl < 0 ? '-' : ''}${formatInr(Math.abs(totals.pnl))}`;
+
   return [
-    `All groups total | P/L ${formatPnlWithEmoji(totals.pnl)}`,
-    `Today ${formatInr(totals.todayDeposit)} | Total ${formatInr(totals.totalDeposit)}`,
-    `Payout ${formatInr(totals.totalPayout)} | Today payout ${formatInr(totals.todayPayout)}`,
+    'All groups total',
+    `[ Payin: ${formatInr(totals.todayDeposit)} | Total: ${formatInr(totals.totalDeposit)} ]`,
+    `[ Payout: ${formatInr(totals.todayPayout)} | Total: ${formatInr(totals.totalPayout)} ]`,
+    pnlLine,
   ].join('\n');
 }
 

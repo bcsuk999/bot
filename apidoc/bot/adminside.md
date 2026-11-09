@@ -154,12 +154,17 @@ The new field is returned by the existing admin group endpoints:
 Not an HTTP endpoint. Used by the bot owner in the bot's private chat.
 
 ```
-/pl <DD/MM/YY> <cost per USDT>
+/pl <t|y|w|m|DD/MM/YY> <cost per USDT>
 ```
 
-Example:
+Examples:
 ```
+/pl t 107     (today)
+/pl y 107     (yesterday)
+/pl w 107     (this week, Mon-Sun IST)
+/pl m 107     (this month)
 /pl 23/11/26 107
+/pl 107       (today, cost-only shortcut)
 ```
 
 Rules:

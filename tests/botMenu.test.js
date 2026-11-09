@@ -80,7 +80,7 @@ describe('helpText', () => {
   });
 
   it('shows /pl only in owner help', () => {
-    expect(helpText({ isOwner: true })).toContain('/pl <DD/MM/YY>');
+    expect(helpText({ isOwner: true })).toContain('/pl <t|y|w|m');
     expect(helpText()).not.toContain('/pl');
   });
 

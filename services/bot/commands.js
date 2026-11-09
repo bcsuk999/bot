@@ -52,7 +52,7 @@ const OWNER_MENU = [
   { command: 'start', description: 'Show bot info and command list' },
   { command: 'reg', description: 'Register a group (run it inside the group)' },
   { command: 'info', description: 'Send a message to all active groups' },
-  { command: 'pl', description: 'Group profit/loss: /pl <DD/MM/YY> <cost>' },
+  { command: 'pl', description: 'Group profit/loss: /pl <t|y|w|m|date> <cost>' },
   { command: 'how', description: 'How to create a deposit and use the bot' },
 ];
 

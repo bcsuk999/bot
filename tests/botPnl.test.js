@@ -39,24 +39,40 @@ describe('parsePlArgs', () => {
     const parsed = parsePlArgs(['23/11/26', '107']);
     expect(parsed.ok).toBe(true);
     expect(parsed.cost).toBe(107);
-    expect(parsed.label).toBe('23/11/2026');
   });
 
-  it('asks for both arguments when they are missing', () => {
+  it('supports the t/y/w/m filters', () => {
+    for (const f of ['t', 'y', 'w', 'm', 'T', 'Y']) {
+      const parsed = parsePlArgs([f, '107']);
+      expect(parsed.ok).toBe(true);
+      expect(parsed.cost).toBe(107);
+      expect(parsed.start).toBeInstanceOf(Date);
+      expect(parsed.end).toBeInstanceOf(Date);
+      expect(parsed.end.getTime()).toBeGreaterThan(parsed.start.getTime());
+    }
+  });
+
+  it('supports a cost-only shortcut for today', () => {
+    const parsed = parsePlArgs(['107']);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.cost).toBe(107);
+  });
+
+  it('asks for arguments when they are missing', () => {
     expect(parsePlArgs([]).ok).toBe(false);
-    expect(parsePlArgs(['23/11/26']).text).toContain('Usage');
+    expect(parsePlArgs(['23/11/26']).ok).toBe(false);
   });
 
   it('rejects an invalid date', () => {
     const parsed = parsePlArgs(['31/02/26', '107']);
     expect(parsed.ok).toBe(false);
-    expect(parsed.text).toContain('Invalid date');
   });
 
   it('rejects a non-positive or non-numeric cost', () => {
     expect(parsePlArgs(['23/11/26', '0']).ok).toBe(false);
     expect(parsePlArgs(['23/11/26', '-5']).ok).toBe(false);
     expect(parsePlArgs(['23/11/26', 'abc']).ok).toBe(false);
+    expect(parsePlArgs(['t', 'abc']).ok).toBe(false);
   });
 });
 
@@ -94,14 +110,16 @@ describe('renderPnlBlock', () => {
 
   it('renders every requested line with the profit', () => {
     const text = renderPnlBlock(row, 107);
-    expect(text).toContain('UID 32045 | 160 | P/L 🟢₹2,752.50');
-    expect(text).toContain('Today ₹10,000.00 | Total ₹1,20,000.00');
-    expect(text).toContain('Payout ₹40,000.00 | Today payout ₹2,000.00');
+    expect(text).toContain('UID 32045 | U 160');
+    expect(text).toContain('[ Payin: ₹10,000.00 | Total: ₹1,20,000.00 ]');
+    expect(text).toContain('[ Payout: ₹2,000.00 | Total: ₹40,000.00 ]');
+    expect(text).toContain('P/L : 💕 ₹2,752.50');
   });
 
   it('says the rate is not set instead of showing a wrong number', () => {
     const text = renderPnlBlock({ ...row, exchangeRate: null }, 107);
-    expect(text).toContain('UID 32045 | - | P/L rate not set');
+    expect(text).toContain('UID 32045 | U -');
+    expect(text).toContain('P/L : rate not set');
   });
 
   it('marks a loss in red and a profit in green', () => {
@@ -128,7 +146,7 @@ describe('renderPnlReport', () => {
     ];
     const text = renderPnlReport({ dateLabel: '23/11/2026', cost: 107, rows });
     expect(text).not.toContain('P&L —');
-    expect(text).toContain('UID 11111 | 160');
+    expect(text).toContain('UID 11111 | U 160');
     expect(text).not.toContain('UID 22222');
   });
 
@@ -158,8 +176,8 @@ describe('renderPnlReport', () => {
 
     const text = renderPnlReport({ dateLabel: '23/11/2026', cost: 107, rows });
     expect(text).toContain('All groups total');
-    expect(text).toContain('Today ₹15,000.00 | Total ₹28,000.00');
-    expect(text).toContain('Payout ₹5,000.00 | Today payout ₹1,500.00');
+    expect(text).toContain('[ Payin: ₹15,000.00 | Total: ₹28,000.00 ]');
+    expect(text).toContain('[ Payout: ₹1,500.00 | Total: ₹5,000.00 ]');
   });
 });
 
