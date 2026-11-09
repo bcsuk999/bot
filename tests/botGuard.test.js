@@ -301,7 +301,23 @@ describe('alertOwner', () => {
     expect(text).not.toContain('Unauthorized bot access');
     expect(options.parse_mode).toBe('HTML');
     expect(options.reply_markup.inline_keyboard.flat()).toEqual([
-      { text: '💬 Message user', url: 'tg://user?id=7705978345' },
+      { text: 'Message user', url: 'tg://user?id=7705978345' },
+    ]);
+  });
+
+  it('adds a Copy Order No button when the reason carries an order id', async () => {
+    const sendMessage = vi.fn().mockResolvedValue(true);
+
+    await alertOwner(
+      ctx,
+      'gateway_error: No available channel (order B20261109010527098276275)',
+      { ownerId: 123 },
+      { sendMessage }
+    );
+
+    const options = sendMessage.mock.calls[0][2];
+    expect(options.reply_markup.inline_keyboard).toContainEqual([
+      { text: 'Copy Order No', copy_text: { text: 'B20261109010527098276275' } },
     ]);
   });
 
@@ -326,8 +342,8 @@ describe('alertOwner', () => {
 
     const options = sendMessage.mock.calls[0][2];
     expect(options.reply_markup.inline_keyboard.flat()).toEqual([
-      { text: '💬 Message user', url: 'tg://user?id=7705978345' },
-      { text: '👥 Open group', url: 'https://t.me/c/1234567890' },
+      { text: 'Message user', url: 'tg://user?id=7705978345' },
+      { text: 'Open group', url: 'https://t.me/c/1234567890' },
     ]);
   });
 
@@ -342,7 +358,7 @@ describe('alertOwner', () => {
 
     const options = sendMessage.mock.calls[0][2];
     expect(options.reply_markup.inline_keyboard.flat()).toContainEqual({
-      text: '👥 Open group',
+      text: 'Open group',
       url: 'https://t.me/platformhub',
     });
   });
