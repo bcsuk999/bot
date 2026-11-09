@@ -74,7 +74,7 @@ function resolveAuthority(ctx = {}, config = {}) {
  */
 function chatDeepLink(chat = {}) {
   const username = typeof chat.username === 'string' ? chat.username.trim() : '';
-  if (username) return `https://t.me/${username}`;
+  if (username && username !== '-') return `https://t.me/${username}`;
 
   const id = chat.id;
   if (id == null) return null;
@@ -96,6 +96,37 @@ function alertTitle(reason = '') {
 }
 
 /**
+ * Format an owner-alert timestamp as "09 Nov 26 || 06:35pm" (IST).
+ */
+function formatAlertTime(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: 'short',
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }).formatToParts(date);
+  const get = (type) => parts.find((p) => p.type === type)?.value || '';
+  const day = get('day');
+  const month = get('month');
+  const year = get('year');
+  const hour = get('hour');
+  const minute = get('minute');
+  const period = get('dayPeriod').toLowerCase();
+  return `${day} ${month} ${year} || ${hour}:${minute}${period}`;
+}
+
+/**
+ * Pull an order id out of an alert reason, e.g. "gateway_error: ... (order B...)".
+ */
+function extractOrderId(reason = '') {
+  const match = String(reason).match(/order\s+([A-Za-z0-9_-]+)/i);
+  return match ? match[1] : null;
+}
+
+/**
  * DM the owner about an unauthorised command or a gateway failure. Reports BOTH
  * the offending chat id and the user id, as required. Best-effort: never throws
  * into the command path.
@@ -105,20 +136,17 @@ async function alertOwner(ctx = {}, reason, config = {}, client = null) {
   if (!client || !config.ownerId) return false;
 
   const title = alertTitle(reason);
+  const orderId = extractOrderId(reason);
 
   const text = [
     title,
     '',
-    `Chat ID: ${escapeHtmlAll(chat.id ?? '-')}`,
-    `Chat type: ${escapeHtmlAll(chat.type ?? '-')}`,
-    `Chat title: ${escapeHtmlAll(chat.title || '-')}`,
+    `Chat ID: ${escapeHtmlAll(chat.id ?? '-')} [ ${escapeHtmlAll(chat.title || '-')} | ${escapeHtmlAll(chat.type ?? '-')} ]`,
     `Chat username: ${escapeHtmlAll(chat.username || '-')}`,
-    `User ID: ${escapeHtmlAll(from.id ?? '-')}`,
-    `Username: ${escapeHtmlAll(from.username || '-')}`,
-    `First name: ${escapeHtmlAll(from.first_name || '-')}`,
-    `Command: ${escapeHtmlAll(command || '-')}`,
+    `User ID: ${escapeHtmlAll(from.id ?? '-')} [ ${escapeHtmlAll(from.first_name || '-')} ]  || ${from.username ? `@${escapeHtmlAll(from.username)}` : '-'}`,
+    `Command used: ${escapeHtmlAll(command || '-')}`,
     `Reason: ${escapeHtmlAll(reason)}`,
-    `Time (IST): ${formatIst()}`,
+    `Time (IST): ${formatAlertTime()}`,
   ].join('\n');
 
   try {
@@ -127,20 +155,26 @@ async function alertOwner(ctx = {}, reason, config = {}, client = null) {
     // Tap-to-DM the offending user. `tg://user?id=` works even when the account
     // has no public username; if the user restricts DMs Telegram shows the
     // profile instead of opening the chat.
-    const buttons = [];
+    const rows = [];
+    const userChatButtons = [];
     if (from.id != null) {
-      buttons.push({ text: '💬 Message user', url: `tg://user?id=${from.id}` });
+      userChatButtons.push({ text: 'Message user', url: `tg://user?id=${from.id}` });
     }
 
     // Tap-to-open the offending chat. Only possible for a public group (username)
     // or a supergroup (-100 id); a basic group has no id deep link.
     const chatLink = chatDeepLink(chat);
     if (chatLink) {
-      buttons.push({ text: '👥 Open group', url: chatLink });
+      userChatButtons.push({ text: 'Open group', url: chatLink });
+    }
+    if (userChatButtons.length) rows.push(userChatButtons);
+
+    if (orderId) {
+      rows.push([{ text: 'Copy Order No', copy_text: { text: String(orderId) } }]);
     }
 
-    if (buttons.length) {
-      options.reply_markup = { inline_keyboard: [buttons] };
+    if (rows.length) {
+      options.reply_markup = { inline_keyboard: rows };
     }
 
     await client.sendMessage(config.ownerId, text, options);
