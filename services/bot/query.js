@@ -10,6 +10,7 @@ const { isValidUid } = require('./uid');
 
 const GROUP_STATUSES = ['active', 'banned', 'suspended'];
 const ORDER_STATUSES = ['pending', 'success', 'failed', 'expired', 'reversed'];
+const ORDER_DIRECTIONS = ['credit', 'debit'];
 const TRANSACTION_TYPES = ['credit', 'debit'];
 const TRANSACTION_NOTES = ['deposit', 'adjustment', 'reversal'];
 const TRANSACTION_STATUSES = ['success', 'reversed'];
@@ -98,6 +99,7 @@ function buildOrderFilter(query = {}) {
   const orderId = pick(query.orderId);
   const groupId = pick(query.groupId);
   const status = pick(query.status);
+  const direction = pick(query.direction);
 
   if (orderId) filter.orderId = contains(orderId);
   if (groupId) filter.groupId = contains(groupId);
@@ -106,6 +108,13 @@ function buildOrderFilter(query = {}) {
       throw httpError(`status must be one of: ${ORDER_STATUSES.join(', ')}`);
     }
     filter.status = status;
+  }
+  // Filter by direction: 'credit' for deposits, 'debit' for withdrawals/adjustments
+  if (direction) {
+    if (!ORDER_DIRECTIONS.includes(direction)) {
+      throw httpError(`direction must be one of: ${ORDER_DIRECTIONS.join(', ')}`);
+    }
+    filter.direction = direction;
   }
 
   const range = buildDateRange(query);
