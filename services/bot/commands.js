@@ -234,11 +234,24 @@ async function handleMessage(msg, client, config) {
         result = await cmdPl(ctx);
         break;
       case '/md':
-        // Owner toggle via private already handled above, but just in case
-        result = { text: 'Maintenance mode is active. Only the owner can use commands.' };
+        // /md means maintenance disable
+        setMaintenanceMode(false);
+        // After disabling, if this was a group chat, send maintenance message (now off)
+        if (chat.type !== 'private') {
+          return maintenanceReply({ ctx, client, config });
+        }
+        const mdStatusOff = getMaintenanceMode();
+        result = { text: mdStatusOff ? 'Maintenance mode is still on.' : 'Maintenance mode disabled.' };
         break;
       case '/me':
-        result = { text: 'Maintenance mode is active. Only the owner can use commands.' };
+        // /me means maintenance enable
+        setMaintenanceMode(true);
+        // After enabling, if this is a group chat, send maintenance message
+        if (chat.type !== 'private') {
+          return maintenanceReply({ ctx, client, config });
+        }
+        const mdStatusOn = getMaintenanceMode();
+        result = { text: mdStatusOn ? 'Maintenance mode enabled.' : 'Maintenance mode was already enabled.' };
         break;
       default:
         return reply(helpText());

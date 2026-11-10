@@ -222,7 +222,7 @@ async function getGroupPnlRows({ start, end }) {
     TelegramGroup.find({
       status: 'active',
       // Groups with no rate are excluded from /pl entirely.
-      exchangeRate: { $ne: null, $gt: 0 },
+      exchangeRate: { $ne: null },
     })
       .select('groupId uid title exchangeRate createdAt')
       .sort({ createdAt: 1, _id: 1 })
