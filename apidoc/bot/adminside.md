@@ -149,7 +149,67 @@ The new field is returned by the existing admin group endpoints:
 
 ---
 
-## 3. Related owner bot command — `/pl`
+## 3. Blocked UPIs (NEW)
+
+Admin can block a UPI id. When `/d` creates an order whose gateway-assigned
+UPI matches a blocked entry, the bot does **not** show the payment slip and
+replies:
+
+```
+⚠️ Please create another order with a different amount. Thank you.
+```
+
+The order is marked `failed` and the owner is alerted (with a copy button for
+the order id). The member is expected to retry `/d` with a different amount,
+which routes through a different channel.
+
+### List blocked UPIs
+
+```
+GET /api/bot/blocked-upis
+```
+
+**Response `200`**
+```json
+{
+  "success": true,
+  "msg": "Blocked UPIs fetched",
+  "count": 1,
+  "data": [
+    { "_id": "...", "upiId": "scam@ybl", "reason": "fraud", "createdBy": 123, "createdAt": "..." }
+  ]
+}
+```
+
+### Block a UPI
+
+```
+POST /api/bot/blocked-upis
+Content-Type: application/json
+
+{ "upiId": "scam@ybl", "reason": "fraud" }
+```
+
+- `upiId` is normalized (trimmed + lowercased) and stored unique.
+- Re-blocking an existing UPI updates its reason.
+
+**Response `201`**
+```json
+{ "success": true, "msg": "UPI blocked", "data": { "upiId": "scam@ybl", "reason": "fraud", ... } }
+```
+
+### Unblock a UPI
+
+```
+DELETE /api/bot/blocked-upis/:upiId
+```
+
+**Response `200`** `{ "success": true, "msg": "UPI unblocked" }`
+**Response `404`** `{ "success": "failed", "msg": "UPI not found in blocklist" }`
+
+---
+
+## 4. Related owner bot command — `/pl`
 
 Not an HTTP endpoint. Used by the bot owner in the bot's private chat.
 
@@ -208,6 +268,9 @@ Rules:
 | `POST` | `/groups/:groupId/suspend` | Suspend group |
 | `POST` | `/groups/:groupId/unban` | Unban group |
 | `POST` | `/groups/:groupId/adjust` | Manual credit/debit |
+| `GET` | `/blocked-upis` | List blocked UPIs |
+| `POST` | `/blocked-upis` | Block a UPI |
+| `DELETE` | `/blocked-upis/:upiId` | Unblock a UPI |
 | `GET` | `/orders` | List orders |
 | `GET` | `/orders/:orderId` | Order detail |
 | `POST` | `/orders/:orderId/approve` | Approve order |

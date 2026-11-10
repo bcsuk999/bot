@@ -1,5 +1,6 @@
 const BotOrder = require('../../../models/BotOrder');
 const simplypay = require('../../simplypay');
+const blockedUpiService = require('../../blockedUpiService');
 const { generateOrderId } = require('../../../utils/helpers');
 const { parseUpiLink } = require('../upilink');
 const { formatInr, formatAmount, formatExpiryIst, escapeHtml } = require('../format');
@@ -119,7 +120,27 @@ async function cmdDeposit(ctx) {
   // the exact slip.
   const payAmount = parsedLink.upiAmount ?? amount;
 
-  order.upiId = parsedLink.valid ? parsedLink.upiId : null;
+  const upiId = parsedLink.valid ? parsedLink.upiId : null;
+
+  // Admin blocklist: if the gateway handed us a UPI that is blocked, do not
+  // show the slip. Tell the member to retry with a different amount (which
+  // routes through a different channel) and fail the order.
+  if (upiId && (await blockedUpiService.isBlocked(upiId))) {
+    order.status = 'failed';
+    order.upiId = upiId;
+    order.deepLink = deepLink;
+    order.paymentLink = paymentLink;
+    order.simplypayOrderNo = apiRes.data?.orderNo || null;
+    order.remark = `Blocked UPI: ${upiId}`;
+    await order.save();
+
+    await alertOwner(ctx, `blocked_upi: ${upiId} (order ${orderId})`, config, client);
+    logger.warn({ groupId: group.groupId, orderId, upiId }, 'bot: deposit blocked by upi blocklist');
+
+    return { text: '⚠️ Please create another order with a different amount. Thank you.' };
+  }
+
+  order.upiId = upiId;
   order.deepLink = deepLink;
   order.paymentLink = paymentLink;
   order.simplypayOrderNo = apiRes.data?.orderNo || null;

@@ -5,10 +5,25 @@ function normalizeUpi(upiId) {
   return String(upiId || '').trim().toLowerCase();
 }
 
+function _isExpired(createdAt) {
+  if (!createdAt) return true;
+  const now = Date.now();
+  const twentyFourHours = 24 * 60 * 60 * 1000;
+  return now - createdAt > twentyFourHours;
+}
+
 async function isBlocked(upiId) {
   const key = normalizeUpi(upiId);
   if (!key) return false;
-  return !!(await BlockedUpi.exists({ upiId: key }));
+  const doc = await BlockedUpi.findOne({ upiId: key });
+  if (!doc) return false;
+  if (_isExpired(doc.createdAt)) {
+    // Auto-unblock: remove expired entry
+    await BlockedUpi.deleteOne({ upiId: key });
+    logger.info({ upiId: key }, 'bot: upi auto-unblocked after 24h');
+    return false;
+  }
+  return true;
 }
 
 async function listBlocked() {

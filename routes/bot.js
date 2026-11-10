@@ -20,6 +20,11 @@ const {
   getTransaction,
   getStats,
 } = require('../controllers/botController');
+const {
+  listBlockedUpis,
+  blockUpi,
+  unblockUpi,
+} = require('../controllers/blockedUpiController');
 
 router.get('/health', health);
 
@@ -31,6 +36,10 @@ router.post('/groups/:groupId/ban', auth, requireAdmin, banGroup);
 router.post('/groups/:groupId/suspend', auth, requireAdmin, suspendGroup);
 router.post('/groups/:groupId/unban', auth, requireAdmin, unbanGroup);
 router.post('/groups/:groupId/adjust', auth, requireAdmin, adjustGroup);
+
+router.get('/blocked-upis', auth, requireAdmin, listBlockedUpis);
+router.post('/blocked-upis', auth, requireAdmin, blockUpi);
+router.delete('/blocked-upis/:upiId', auth, requireAdmin, unblockUpi);
 
 router.get('/orders', auth, requireAdmin, listOrders);
 router.get('/orders/:orderId', auth, requireAdmin, getOrder);
