@@ -3,7 +3,7 @@
 ## Endpoint: `GET /admin/pnl`
 
 ### Description
-Generate a Profit & Loss report for the bot, identical to the `/pl` command output. This report shows group-wise deposits, payouts and profit/loss for a given date and cost per USDT.
+Generate a Profit & Loss report for the bot. This report shows group-wise deposits, payouts and profit/loss for a given date and cost per USDT, returned as structured JSON so the frontend can render its own UI.
 
 ### Authentication
 - **Required**: Yes (Admin JWT token via `Authorization: Bearer <token>` header)
@@ -24,14 +24,39 @@ Generate a Profit & Loss report for the bot, identical to the `/pl` command outp
   "msg": "P&L report generated",
   "dateLabel": "23/11/2026",
   "cost": 107,
-  "groups": 5,
-  "report": "UID 12345 | U 160\n[ Payin: ₹10,000.00 | Total: ₹20,000.00 ]\n[ Payout: ₹1,000.00 | Total: ₹5,000.00 ]\n  P/L : 💕 ₹2,752.50\n\n...",
-  "chunks": 3,
-  "chunkDetails": [
-    "UID 12345 | U 160\n[ Payin: ₹10,000.00 | Total: ₹20,000.00 ]\n[ Payout: ₹1,000.00 | Total: ₹5,000.00 ]\n  P/L : 💕 ₹2,752.50",
-    "UID 67890 | U 155\n[ Payin: ₹5,000.00 ...",
-    "UID 11111 | U 165\n[ Payin: ₹8,000.00 ..."
-  ]
+  "groups": 3,
+  "rows": [
+    {
+      "groupId": "-1001234567890",
+      "uid": 12345,
+      "title": "Group title",
+      "exchangeRate": 160,
+      "todayDeposit": 15200.5,
+      "totalDeposit": 45600,
+      "todayPayout": 3500,
+      "totalPayout": 12800,
+      "pnl": 4825.75
+    },
+    {
+      "groupId": "-1009876543210",
+      "uid": 67890,
+      "title": "Another group",
+      "exchangeRate": 155,
+      "todayDeposit": 8900,
+      "totalDeposit": 26700,
+      "todayPayout": 1200,
+      "totalPayout": 4500,
+      "pnl": 2150
+    }
+  ],
+  "totals": {
+    "groups": 3,
+    "todayDeposit": 36600.5,
+    "totalDeposit": 109800,
+    "todayPayout": 7500,
+    "totalPayout": 26900,
+    "pnl": 12151.75
+  }
 }
 ```
 
@@ -41,7 +66,6 @@ Generate a Profit & Loss report for the bot, identical to the `/pl` command outp
 |--------|-------------|
 | 400 | `date (DD/MM/YY) and cost per USDT are required` |
 | 400 | `Invalid date format or cost. Use a positive number, e.g. 107` |
-| 400 | `No active groups with an exchange rate set.` (when no groups have rates configured) |
 | 500 | `Failed to generate P&L report` |
 
 ### Request Example
@@ -55,24 +79,31 @@ Authorization: Bearer <admin_jwt_token>
 
 - `dateLabel` - The formatted date string (e.g., `23/11/2026`)
 - `cost` - The cost per USDT used for the calculation
-- `groups` - Number of active groups with exchange rates included in the report
-- `report` - Full P&L report text (ready for display, newline-separated blocks)
-- `chunks` - Number of chunks the report was split into (Telegram limit: ~4000 chars per message)
-- `chunkDetails` - Array of chunk strings (each ≤ 4000 chars). Frontend can iterate and send each as a separate message.
+- `groups` - Number of active groups included in the report
+- `rows` - Array of per-group objects:
+  - `groupId` - Telegram group ID
+  - `uid` - Group UID (or `null` if unset)
+  - `title` - Telegram group title
+  - `exchangeRate` - Admin-set group exchange rate (INR per USDT)
+  - `todayDeposit` / `totalDeposit` - Deposits for the selected day / lifetime
+  - `todayPayout` / `totalPayout` - Payouts (debit adjustments) for the selected day / lifetime
+  - `pnl` - Profit/loss for the day (`null` when the group's rate is not usable)
+- `totals` - Aggregated figures across groups with a usable rate:
+  - `groups` - Number of groups included in the totals
+  - `todayDeposit` / `totalDeposit` / `todayPayout` / `totalPayout` - Sums
+  - `pnl` - Total profit/loss
 
-### How it works (same as `/pl`)
+### How it works (same calculation as `/pl`)
 
 1. Parses `date` as an IST day using `parseIstDate`
 2. Parses `cost` as the cost per USDT
 3. Fetches grouped deposit/payout data from the database (`getGroupPnlRows`)
-4. Calculates P&L per group using the exchange rate and cost
-5. Renders the report using `renderPnlReport` (same layout as `/pl`)
-6. Splits the report into Telegram-sized chunks using `chunkText`
-7. Returns all data so the frontend can display or send the messages
+4. Calculates P&L per group using the exchange rate and cost (`computePnl`)
+5. Returns structured JSON per group plus totals (`summarizeRatedRows`)
 
 ### Frontend Integration Notes
 
-- The `report` field contains the full formatted text with emojis and INR formatting
-- The `chunks` array allows sending long reports message-by-message (Telegram limit)
-- If `groups` is 0, the `report` will contain `No active groups with an exchange rate set.`
+- Build your own table/UI from the `rows` array; amounts are plain numbers rounded to 2 decimals
+- `pnl` is `null` when the group's exchange rate is missing or not usable — show "rate not set" for those
+- A group is only included when it is active and has an exchange rate set
 - Authentication: use the admin JWT token obtained from `POST /admin/login`

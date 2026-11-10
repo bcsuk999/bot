@@ -170,39 +170,58 @@ exports.resetUserPassword = async (req, res) => {
   }
 };
 
-const { parsePlArgs, getGroupPnlRows, renderPnlReport, chunkText } = require('../services/bot/pnl');
+const { parsePlArgs, getGroupPnlRows, computePnl, summarizeRatedRows } = require('../services/bot/pnl');
+
+function round2(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
 
 exports.adminPnlReport = async (req, res) => {
   try {
     const { date, cost } = req.query;
-    
+
     if (!date || !cost) {
       return res.status(400).json({ success: 'failed', msg: 'date (DD/MM/YY) and cost per USDT are required' });
     }
-    
+
     const parsed = parsePlArgs([date, Number(cost)]);
     if (!parsed.ok) {
       return res.status(400).json({ success: 'failed', msg: parsed.text });
     }
-    
+
     const rows = await getGroupPnlRows({ start: parsed.start, end: parsed.end });
-    const text = renderPnlReport({
-      dateLabel: parsed.label,
-      cost: parsed.cost,
-      rows,
-    });
-    
-    const chunks = chunkText(text);
-    
+
+    const groupRows = rows.map((row) => ({
+      groupId: row.groupId,
+      uid: row.uid,
+      title: row.title,
+      exchangeRate: row.exchangeRate,
+      todayDeposit: round2(row.todayDeposit),
+      totalDeposit: round2(row.totalDeposit),
+      todayPayout: round2(row.todayPayout),
+      totalPayout: round2(row.totalPayout),
+      // null when the group has no usable exchange rate
+      pnl: computePnl({ exchangeRate: row.exchangeRate, cost: parsed.cost, deposit: row.todayDeposit }),
+    }));
+
+    // Totals only include groups with a usable exchange rate (same rule as /pl)
+    const totals = summarizeRatedRows(rows, parsed.cost);
+
     res.json({
       success: true,
       msg: 'P&L report generated',
       dateLabel: parsed.label,
       cost: parsed.cost,
-      groups: rows.length,
-      report: text,
-      chunks: chunks.length,
-      chunkDetails: chunks
+      groups: groupRows.length,
+      rows: groupRows,
+      totals: {
+        groups: totals.groups,
+        todayDeposit: round2(totals.todayDeposit),
+        totalDeposit: round2(totals.totalDeposit),
+        todayPayout: round2(totals.todayPayout),
+        totalPayout: round2(totals.totalPayout),
+        pnl: totals.pnl,
+      },
     });
   } catch (err) {
     logger.error({ err }, 'adminPnlReport error');
