@@ -157,7 +157,12 @@ async function handleMessage(msg, client, config) {
     if (command === '/pl') {
       try {
         const result = await cmdPl(ctx);
-        return sendChunks(result.chunks || [result.text]);
+        const chunks = result.chunks || [result.text];
+        // Send the report: if single chunk send it, otherwise join chunks with newlines
+        if (chunks.length === 1) {
+          return reply(chunks[0]);
+        }
+        return reply(chunks.join('\n\n'));
       } catch (err) {
         logger.error({ err, userId: from.id }, 'bot: /pl report failed');
         return reply('Unable to build the P&L report. Please try again.');
