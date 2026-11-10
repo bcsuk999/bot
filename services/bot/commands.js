@@ -9,6 +9,7 @@ const {
   scheduleDepositExpiryEdit,
   rememberDepositMessage,
 } = require('./handlers/deposit');
+const { cmdMd, setMaintenanceMode, getMaintenanceMode, MAINTENANCE_MESSAGE } = require('./handlers/md');
 const { cmdDaily } = require('./handlers/daily');
 const { cmdStatus } = require('./handlers/status');
 const { cmdStart } = require('./handlers/start');
@@ -20,8 +21,8 @@ const logger = require('../../utils/logger');
 
 // Commands that need a registered group with active status.
 const GROUP_COMMANDS = new Set(['/balance', '/id', '/d', '/daily', '/status']);
-const ALL_COMMANDS = new Set(['/start', '/reg', '/balance', '/id', '/d', '/daily', '/status', '/info', '/how', '/pl']);
-const REG_OWNER_ONLY = 'Only the bot owner can register a group. Ask the owner to run /reg here.';
+const ALL_COMMANDS = new Set(['/start', '/reg', '/balance', '/id', '/d', '/daily', '/status', '/info', '/how', '/pl', '/md', '/me']);
+const REG_OWNER_ONLY = 'Only the bot owner can register a group. Ask the owner to run /reg here';
 
 // The "/" menus Telegram renders per chat scope (Bot API setMyCommands).
 // /reg is absent from the group menu on purpose: a normal group member must not
@@ -112,16 +113,6 @@ async function handleMessage(msg, client, config) {
   const reply = (text, options) =>
     sendProcessingReply(client, chat.id, processingMessage, text, options);
 
-  // A report can exceed Telegram's 4096-char limit. Edit the processing message
-  // with the first chunk, then send the rest as follow-up messages.
-  const sendChunks = async (chunks) => {
-    let sent = null;
-    for (let i = 0; i < chunks.length; i += 1) {
-      sent = i === 0 ? await reply(chunks[i]) : await client.sendMessage(chat.id, chunks[i]);
-    }
-    return sent;
-  };
-
   // 1. Restrict private chats and alert the owner when needed.
   const decision = await enforce(ctx, config, client);
   if (!decision.allowed) {
@@ -172,8 +163,17 @@ async function handleMessage(msg, client, config) {
         return reply('Unable to build the P&L report. Please try again.');
       }
     }
-    if (command === '/how') {
-      return reply(cmdHow().text);
+    if (command === '/md') {
+      // Toggle maintenance mode for owner in private
+      setMaintenanceMode(!getMaintenanceMode());
+      const status = getMaintenanceMode() ? 'enabled' : 'disabled';
+      return reply(`Maintenance mode ${status}.`);
+    }
+    if (command === '/me') {
+      // Same as /md - toggle maintenance
+      setMaintenanceMode(!getMaintenanceMode());
+      const status = getMaintenanceMode() ? 'enabled' : 'disabled';
+      return reply(`Maintenance mode ${status}.`);
     }
     return reply('Group commands must be run inside an authorised group.');
   }
@@ -185,6 +185,11 @@ async function handleMessage(msg, client, config) {
   if (command === '/reg') {
     const registrationDenial = getRegistrationDenial(from, config);
     if (registrationDenial) return reply(registrationDenial);
+  }
+
+  // Check maintenance mode - if active, groups can only get the message, no commands
+  if (getMaintenanceMode() && chat.type !== 'private') {
+    return maintenanceReply({ ctx, client, config });
   }
 
   let result;
@@ -224,6 +229,16 @@ async function handleMessage(msg, client, config) {
         break;
       case '/how':
         result = cmdHow();
+        break;
+      case '/pl':
+        result = await cmdPl(ctx);
+        break;
+      case '/md':
+        // Owner toggle via private already handled above, but just in case
+        result = { text: 'Maintenance mode is active. Only the owner can use commands.' };
+        break;
+      case '/me':
+        result = { text: 'Maintenance mode is active. Only the owner can use commands.' };
         break;
       default:
         return reply(helpText());
@@ -281,4 +296,7 @@ module.exports = {
   ALL_COMMANDS,
   getGroupAccessDenial,
   getRegistrationDenial,
+  setMaintenanceMode,
+  getMaintenanceMode,
+  MAINTENANCE_MESSAGE,
 };

@@ -14,10 +14,11 @@ const GROUP_LINES = [
 const REG_LINE = '/reg     - Register a group (run it inside the group)';
 const INFO_LINE = '/info <message> - Notify all active registered groups';
 const PL_LINE = '/pl <t|y|w|m|DD/MM/YY> <cost> - Group profit/loss report';
+const MD_LINE = '/md, /me - Toggle maintenance mode (owner only)';
 
 function helpText({ isOwner = false } = {}) {
   const lines = ['Commands:'];
-  if (isOwner) lines.push(REG_LINE, INFO_LINE, PL_LINE);
+  if (isOwner) lines.push(REG_LINE, INFO_LINE, PL_LINE, MD_LINE);
   lines.push(...GROUP_LINES);
   return lines.join('\n');
 }
