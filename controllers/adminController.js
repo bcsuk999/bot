@@ -169,3 +169,43 @@ exports.resetUserPassword = async (req, res) => {
     res.status(500).json({ success: 'failed', msg: 'Failed to reset user password' });
   }
 };
+
+const { parsePlArgs, getGroupPnlRows, renderPnlReport, chunkText } = require('../services/bot/pnl');
+
+exports.adminPnlReport = async (req, res) => {
+  try {
+    const { date, cost } = req.query;
+    
+    if (!date || !cost) {
+      return res.status(400).json({ success: 'failed', msg: 'date (DD/MM/YY) and cost per USDT are required' });
+    }
+    
+    const parsed = parsePlArgs([date, Number(cost)]);
+    if (!parsed.ok) {
+      return res.status(400).json({ success: 'failed', msg: parsed.text });
+    }
+    
+    const rows = await getGroupPnlRows({ start: parsed.start, end: parsed.end });
+    const text = renderPnlReport({
+      dateLabel: parsed.label,
+      cost: parsed.cost,
+      rows,
+    });
+    
+    const chunks = chunkText(text);
+    
+    res.json({
+      success: true,
+      msg: 'P&L report generated',
+      dateLabel: parsed.label,
+      cost: parsed.cost,
+      groups: rows.length,
+      report: text,
+      chunks: chunks.length,
+      chunkDetails: chunks
+    });
+  } catch (err) {
+    logger.error({ err }, 'adminPnlReport error');
+    res.status(500).json({ success: 'failed', msg: 'Failed to generate P&L report' });
+  }
+};

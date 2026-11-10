@@ -35,6 +35,7 @@ const {
 const simplypayController = require('../controllers/simplypayController');
 const { getBonusConfig, updateBonusConfig } = require('../controllers/adminBonusController');
 const { getSettings, updateSettings } = require('../controllers/adminSettingsController');
+const { adminPnlReport } = require('../controllers/adminController');
 const {
   getCommissionConfig,
   updateCommissionConfig,
@@ -103,5 +104,6 @@ router.get('/referral-stats', auth, requireAdmin, adminReferralStats);
 // App settings (telegram links, etc.)
 router.get('/settings', auth, requireAdmin, getSettings);
 router.put('/settings', auth, requireAdmin, updateSettings);
+router.get('/pnl', auth, requireAdmin, adminPnlReport);
 
 module.exports = router;
