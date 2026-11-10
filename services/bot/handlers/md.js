@@ -12,8 +12,8 @@
 
 // Maintenance message - owner should customize as needed
 const MAINTENANCE_MESSAGE = `🩷🩷
-Please pay attention: if any UPI have reached the daily limit or are unable to send payment, let us know in the group so we can take appropriate action. Thank you. Happy earning.
-Performance: Consistent success rate`;
+Bot Under Maintenance
+Will resume shortly. Thank you for your patience!`;
 
 // Default: maintenance off. Set to true to enable.
 let maintenanceMode = false;
