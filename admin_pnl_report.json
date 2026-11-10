@@ -1,13 +1,10 @@
 {
-  "success": true,
-  "msg": "P&L report generated",
-  "dateLabel": "23/11/2026",
-  "cost": 107,
-  "groups": 3,
-  "report": "UID 12345 | U 160\n[ Payin: ₹15,200.50 | Total: ₹45,600.00 ]\n[ Payout: ₹3,500.00 | Total: ₹12,800.00 ]\n  P/L : 💕 ₹4,825.75\n\nUID 67890 | U 155\n[ Payin: ₹8,900.00 | Total: ₹26,700.00 ]\n[ Payout: ₹1,200.00 | Total: ₹4,500.00 ]\n  P/L : 🟢 ₹2,150.00\n\nUID 11111 | U 165\n[ Payin: ₹12,500.00 | Total: ₹37,500.00 ]\n[ Payout: ₹2,800.00 | Total: ₹9,600.00 ]\n  P/L : 💕 ₹5,175.25",
-  "chunks": 2,
-  "chunkDetails": [
-    "UID 12345 | U 160\n[ Payin: ₹15,200.50 | Total: ₹45,600.00 ]\n[ Payout: ₹3,500.00 | Total: ₹12,800.00 ]\n  P/L : 💕 ₹4,825.75",
-    "UID 67890 | U 155\n[ Payin: ₹8,900.00 | Total: ₹26,700.00 ]\n[ Payout: ₹1,200.00 | Total: ₹4,500.00 ]\n  P/L : 🟢 ₹2,150.00\n\nUID 11111 | U 165\n[ Payin: ₹12,500.00 | Total: ₹37,500.00 ]\n[ Payout: ₹2,800.00 | Total: ₹9,600.00 ]\n  P/L : 💕 ₹5,175.25"
-  ]
+  "upi": "U12345",
+  "exchange_rate": 160,
+  "payin": 15200.50,
+  "total": 45600.00,
+  "payout": 3500.00,
+  "total_payout": 12800.00,
+  "pnl": 4825.75,
+  "status": "profit"
 }
