@@ -589,8 +589,7 @@ receivedAmount = 100 + 11.2 = 111.2
     "ifsc": "SBIN0001234",
     "account": "1234567890",
     "holderName": "John Doe",
-    "bankName": "State Bank of India",
-    "password": "123123"
+    "bankName": "State Bank of India"
   }
   ```
 - **Request Body (merchant-level payout — no userid):**
@@ -600,14 +599,12 @@ receivedAmount = 100 + 11.2 = 111.2
     "ifsc": "SBIN0001234",
     "account": "1234567890",
     "holderName": "John Doe",
-    "bankName": "State Bank of India",
-    "password": "123123"
+    "bankName": "State Bank of India"
   }
   ```
 - **Validation:**
   - `amount` required
   - `userid` optional
-  - `password` required — second-step payout password (`ADMIN_PAYOUT_PASSWORD`, default `123123`)
   - `ifsc`, `account` and `holderName` required together for a direct bank payout
   - Bank details may be sent at the top level or nested under `bank` / `bankDetails`; `accountNumber` is accepted for `account`
   - The payout record always stores the bank details sent by the admin, never the user's saved bank
@@ -635,7 +632,6 @@ receivedAmount = 100 + 11.2 = 111.2
   For a merchant-level payout, `userid` is `null`.
 - **Errors:**
   - 400: `{ "success": "failed", "msg": "amount is required" }`
-  - 403: `{ "success": "failed", "msg": "Invalid payout password" }`
   - 400: `{ "success": "failed", "msg": "ifsc, account and holderName are required for a bank payout" }`
   - 400: `{ "success": "failed", "msg": "ifsc, account and holderName are required when userid is not provided" }`
   - 400: `{ "success": "failed", "msg": "Insufficient balance. Required: 500, Available: 100" }`

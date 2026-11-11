@@ -4,7 +4,7 @@ const Transaction = require('../models/Transaction');
 const User = require('../models/User');
 const simplypay = require('../services/simplypay');
 const { calculateBonus } = require('./adminBonusController');
-const { getCurrentBalance, generateOrderId, verifyPayoutPassword } = require('../utils/helpers');
+const { getCurrentBalance, generateOrderId } = require('../utils/helpers');
 const { approvePayin } = require('../services/payinService');
 const { settleBotOrder } = require('./botWebhookController');
 const logger = require('../utils/logger');
@@ -360,7 +360,7 @@ exports.payoutCallback = async (req, res) => {
 // when absent it is a merchant-level payout with no wallet or ledger entry.
 // Bank details can be supplied directly (`ifsc`, `account`, `holderName`) or
 // taken from one of the user's enabled bank accounts (`bankId` / first active
-// bank). A second-step payout password is required for every withdrawal.
+// bank).
 exports.adminCreatePayout = async (req, res) => {
   try {
     const {
@@ -377,15 +377,10 @@ exports.adminCreatePayout = async (req, res) => {
       name,
       email,
       mobile,
-      password,
     } = req.body;
 
     if (!amount) {
       return res.status(400).json({ success: 'failed', msg: 'amount is required' });
-    }
-
-    if (!verifyPayoutPassword(password)) {
-      return res.status(403).json({ success: 'failed', msg: 'Invalid payout password' });
     }
 
     const parsedAmount = Number(amount);
