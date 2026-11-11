@@ -70,16 +70,31 @@ async function getGroupOrderCounts(groupId) {
 
 // One /daily rate line: `label: succeeded/total=rate% ₹succeeded amount`.
 // An empty window is 0/0=0.00%, never NaN.
+function successRate(bucket) {
+  const total = bucket?.totalOrders || 0;
+  const succeeded = bucket?.success?.count || 0;
+  return total > 0 ? (succeeded / total) * 100 : 0;
+}
+
 function renderRateLine(label, bucket) {
   const total = bucket?.totalOrders || 0;
   const succeeded = bucket?.success?.count || 0;
-  const rate = total > 0 ? (succeeded / total) * 100 : 0;
+  const rate = successRate(bucket);
   return `${label}: ${succeeded}/${total}=${rate.toFixed(2)}% ${formatInr(bucket?.success?.amount || 0)}`;
+}
+
+// Mood emoji for a window's success rate: 😭 under 5%, 💕 from 5% up to 10%,
+// 🩷 from 10% up to 20%, 🍻 at 20% and above. An empty window reads 0% → 😭.
+function rateEmoji(rate) {
+  if (rate < 5) return '😭';
+  if (rate < 10) return '💕';
+  if (rate < 20) return '🩷';
+  return '🍻';
 }
 
 // The /daily reply: one success-rate line per window, newest window first.
 function renderRateReport(windows = []) {
-  return windows.map(({ label, bucket }) => `😭 ${renderRateLine(label, bucket)}`).join('\n');
+  return windows.map(({ label, bucket }) => `${rateEmoji(successRate(bucket))} ${renderRateLine(label, bucket)}`).join('\n');
 }
 
 // Detailed per-status block report. /daily now renders the rate lines above
@@ -109,5 +124,7 @@ module.exports = {
   getGroupOrderCounts,
   renderRateLine,
   renderRateReport,
+  successRate,
+  rateEmoji,
   renderStatsReport,
 };

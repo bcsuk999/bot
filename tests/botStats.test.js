@@ -9,7 +9,7 @@ import {
   formatIst,
   escapeHtml,
 } from '../services/bot/format.js';
-import { renderStatsReport, renderRateReport, renderRateLine, statsMatch } from '../services/bot/stats.js';
+import { renderStatsReport, renderRateReport, renderRateLine, statsMatch, rateEmoji, successRate } from '../services/bot/stats.js';
 
 describe('startOfIstDay', () => {
   it('returns midnight IST for a mid-afternoon IST instant', () => {
@@ -193,7 +193,7 @@ describe('renderRateLine / renderRateReport', () => {
     expect(renderRateLine('1 hour', undefined)).toBe('1 hour: 0/0=0.00% ₹0.00');
   });
 
-  it('prefixes every window with the sobbing emoji, newest window first', () => {
+  it('picks the emoji per window by success rate, newest window first', () => {
     const text = renderRateReport([
       { label: '10 min', bucket: emptyBucket() },
       { label: '30 min', bucket: emptyBucket() },
@@ -204,8 +204,24 @@ describe('renderRateLine / renderRateReport', () => {
       '😭 10 min: 0/0=0.00% ₹0.00',
       '😭 30 min: 0/0=0.00% ₹0.00',
       '😭 1 hour: 0/0=0.00% ₹0.00',
-      '😭 Today: 1/1=100.00% ₹400.00',
+      '🍻 Today: 1/1=100.00% ₹400.00',
     ]);
+  });
+
+  it('maps success rates to tier emojis', () => {
+    expect(rateEmoji(0)).toBe('😭');
+    expect(rateEmoji(4.99)).toBe('😭');
+    expect(rateEmoji(5)).toBe('💕');
+    expect(rateEmoji(9.99)).toBe('💕');
+    expect(rateEmoji(10)).toBe('🩷');
+    expect(rateEmoji(19.99)).toBe('🩷');
+    expect(rateEmoji(20)).toBe('🍻');
+    expect(rateEmoji(100)).toBe('🍻');
+  });
+
+  it('treats an empty window as a 0% rate', () => {
+    expect(successRate(emptyBucket())).toBe(0);
+    expect(successRate(undefined)).toBe(0);
   });
 });
 
