@@ -605,7 +605,7 @@ receivedAmount = 100 + 11.2 = 111.2
 - **Validation:**
   - `amount` required
   - `userid` optional
-  - `ifsc`, `account` and `holderName` required together for a direct bank payout
+  - `ifsc`, `account` and `holderName` required together for a direct bank payout; `name` is accepted as an alias for `holderName`
   - Bank details may be sent at the top level or nested under `bank` / `bankDetails`; `accountNumber` is accepted for `account`
   - The payout record always stores the bank details sent by the admin, never the user's saved bank
   - When `userid` is omitted, direct bank details are required (there is no saved bank to fall back to)

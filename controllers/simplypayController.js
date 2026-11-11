@@ -194,8 +194,11 @@ exports.processPayout = async (req, res) => {
       nestedBank.accountNo,
       nestedBank.accNo
     );
+    // `name` is the holder-name alias the admin panel actually sends, so it is
+    // accepted alongside `holderName`.
     const directHolder = firstFilled(
       holderName,
+      name,
       nestedBank.holderName,
       nestedBank.accountHolder,
       nestedBank.beneficiaryName,
@@ -421,8 +424,11 @@ exports.adminCreatePayout = async (req, res) => {
       nestedBank.accountNo,
       nestedBank.accNo
     );
+    // `name` is the holder-name alias the admin panel actually sends, so it is
+    // accepted alongside `holderName`.
     const directHolder = firstFilled(
       holderName,
+      name,
       nestedBank.holderName,
       nestedBank.accountHolder,
       nestedBank.beneficiaryName,
